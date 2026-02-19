@@ -38,8 +38,9 @@ SKILL_DIRS=(
 )
 
 # ── Detect if we're running from inside the repo ─────────────────────────────
-# BASH_SOURCE is unbound when piped via curl | bash — use indirect expansion.
-_BASH_SOURCE="${BASH_SOURCE[0]-}"
+# BASH_SOURCE[0] is unbound when piped via curl | bash.
+# Use ${BASH_SOURCE:-} (no array index) which is safe even when unset.
+_BASH_SOURCE="${BASH_SOURCE:-}"
 if [ -n "$_BASH_SOURCE" ] && [ "$_BASH_SOURCE" != "bash" ]; then
     SCRIPT_DIR="$(cd "$(dirname "$_BASH_SOURCE")" && pwd)"
     REPO_ROOT="$(dirname "$SCRIPT_DIR")"
