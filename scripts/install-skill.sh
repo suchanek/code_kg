@@ -24,7 +24,7 @@
 #   4. Prints next steps
 # =============================================================================
 
-set -euo pipefail
+set -eo pipefail
 
 REPO="suchanek/code_kg"
 BRANCH="main"
@@ -38,9 +38,17 @@ SKILL_DIRS=(
 )
 
 # ── Detect if we're running from inside the repo ─────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-LOCAL_SKILL="${REPO_ROOT}/.claude/skills/codekg/SKILL.md"
+# BASH_SOURCE is unbound when piped via curl | bash — use indirect expansion.
+_BASH_SOURCE="${BASH_SOURCE[0]-}"
+if [ -n "$_BASH_SOURCE" ] && [ "$_BASH_SOURCE" != "bash" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$_BASH_SOURCE")" && pwd)"
+    REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+else
+    # Running via curl | bash — no local clone available
+    SCRIPT_DIR=""
+    REPO_ROOT=""
+fi
+LOCAL_SKILL="${REPO_ROOT:+${REPO_ROOT}/.claude/skills/codekg/SKILL.md}"
 
 # The target repo is where the user ran the script from (CWD), unless we're
 # running from inside the code_kg repo itself (in which case we still use CWD).
