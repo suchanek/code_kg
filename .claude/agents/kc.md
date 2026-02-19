@@ -294,3 +294,4 @@ Next Session: <next phase to continue>
 - Knowledge Copilot typically runs standalone as a discovery/setup agent
 - Does not route to other agents during discovery
 - Creates extensions that modify how other agents behave
+

@@ -1,0 +1,45 @@
+# ============================================================
+# CodeKG — docker-compose.yml
+# ============================================================
+# Quick start:
+#   docker compose up                          # analyse current dir
+#   REPO_ROOT=/path/to/repo docker compose up  # analyse another repo
+#
+# The SQLite graph and LanceDB vector index are stored in the
+# named volume `codekg-data` so they survive container restarts.
+# ============================================================
+
+services:
+  codekg:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: codekg:latest
+    container_name: codekg
+    restart: unless-stopped
+    ports:
+      - "${CODEKG_PORT:-8501}:8501"
+    volumes:
+      # Mount the repo you want to analyse (read-only).
+      # Override REPO_ROOT to point at any local repository.
+      - ${REPO_ROOT:-./}:/workspace:ro
+      # Persist the SQLite graph and LanceDB vector index across restarts.
+      - codekg-data:/data
+    environment:
+      # Paths inside the container — must match the volume mounts above.
+      - CODEKG_DB=/data/codekg.sqlite
+      - CODEKG_LANCEDB=/data/lancedb
+      # Streamlit server settings (can be overridden here or in .env).
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  codekg-data:
+    driver: local

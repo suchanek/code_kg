@@ -1,0 +1,70 @@
+# ============================================================
+# .dockerignore — keep the build context lean
+# ============================================================
+
+# Version control
+.git/
+.gitignore
+
+# Python caches & build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Linting / type-checking caches
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Generated CodeKG artefacts (rebuilt inside the container)
+lancedb/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docs (not needed at runtime)
+docs/
+CHANGELOG.md
+
+# CI / GitHub
+.github/
+
+# Misc
+*.log
+.env
+.envrc
+lib/

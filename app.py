@@ -52,7 +52,12 @@ _REL_COLOR: Dict[str, str] = {
     "INHERITS": "#F39C12",
 }
 
-_DEFAULT_DB = "codekg.sqlite"
+# Honour the CODEKG_DB env var so the Docker image (which mounts
+# persistent data at /data) works out of the box without the user
+# having to change the sidebar path manually.
+import os as _os
+_DEFAULT_DB = _os.environ.get("CODEKG_DB", "codekg.sqlite")
+_DEFAULT_LANCEDB = _os.environ.get("CODEKG_LANCEDB", "./lancedb")
 
 # ---------------------------------------------------------------------------
 # Page config (must be first Streamlit call)
@@ -104,6 +109,7 @@ def _init_state() -> None:
         "graph_edges": None,
         "kg": None,
         "kg_loaded_path": None,
+        "selected_node_id": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -148,6 +154,68 @@ def _load_kg(repo_root: str, db_path: str, lancedb_dir: str, model: str):
 # pyvis graph builder
 # ---------------------------------------------------------------------------
 
+def _build_node_tooltip(n: dict, color: str) -> str:
+    """
+    Build a rich HTML tooltip for a pyvis node.
+
+    Shows: kind badge · qualname · module path · line range · full docstring.
+    Rendered inside the pyvis hover popup (supports basic HTML).
+    """
+    kind = n.get("kind", "symbol")
+    qualname = n.get("qualname") or n.get("name", "")
+    module = n.get("module_path") or ""
+    lineno = n.get("lineno")
+    end_lineno = n.get("end_lineno")
+    docstring = (n.get("docstring") or "").strip()
+
+    # Line range string
+    if lineno and end_lineno and end_lineno != lineno:
+        line_str = f"lines {lineno}–{end_lineno}"
+    elif lineno:
+        line_str = f"line {lineno}"
+    else:
+        line_str = ""
+
+    # Docstring — show up to 8 lines, wrap long lines
+    doc_html = ""
+    if docstring:
+        doc_lines = docstring.splitlines()
+        shown = doc_lines[:8]
+        escaped = [
+            line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            for line in shown
+        ]
+        doc_html = (
+            "<hr style='border:0;border-top:1px solid #444;margin:6px 0;'>"
+            "<div style='font-family:monospace;font-size:11px;color:#ccc;"
+            "white-space:pre-wrap;max-width:380px;'>"
+            + "<br>".join(escaped)
+            + ("…" if len(doc_lines) > 8 else "")
+            + "</div>"
+        )
+
+    tooltip = (
+        f"<div style='font-family:sans-serif;font-size:12px;"
+        f"background:#1e1e2e;color:#e0e0e0;padding:10px 14px;"
+        f"border-radius:8px;border-left:4px solid {color};"
+        f"max-width:400px;'>"
+        f"<span style='background:{color};color:#fff;border-radius:4px;"
+        f"padding:1px 7px;font-size:11px;font-weight:bold;'>{kind}</span>"
+        f"&nbsp;&nbsp;<b style='font-size:13px;'>{qualname}</b>"
+        + (
+            f"<br><span style='color:#888;font-size:11px;'>"
+            f"📄 {module}"
+            + (f" &nbsp;·&nbsp; {line_str}" if line_str else "")
+            + "</span>"
+            if module
+            else ""
+        )
+        + doc_html
+        + "</div>"
+    )
+    return tooltip
+
+
 def _build_pyvis(
     nodes: List[dict],
     edges: List[dict],
@@ -160,6 +228,8 @@ def _build_pyvis(
     Build a pyvis Network from node/edge dicts and return the HTML string.
 
     Seed nodes (from semantic search) are rendered with a gold border.
+    Hovering shows a rich tooltip; clicking a node opens a floating detail
+    panel inside the graph iframe with the full docstring and metadata.
     """
     net = Network(
         height=height,
@@ -188,7 +258,7 @@ def _build_pyvis(
         },
         "interaction": {
             "hover": True,
-            "tooltipDelay": 100,
+            "tooltipDelay": 80,
             "navigationButtons": True,
             "keyboard": True,
         },
@@ -196,26 +266,18 @@ def _build_pyvis(
 
     seed_ids = seed_ids or set()
 
+    # Build a JS-safe node data map for the click panel
+    node_data_js: Dict[str, dict] = {}
+
     for n in nodes:
         kind = n.get("kind", "symbol")
         color = _KIND_COLOR.get(kind, "#95A5A6")
         shape = _KIND_SHAPE.get(kind, "dot")
         label = n.get("name", n["id"])
-        # truncate long labels
         if len(label) > 28:
             label = label[:25] + "…"
-        qualname = n.get("qualname") or n.get("name", "")
-        module = n.get("module_path") or ""
-        lineno = n.get("lineno")
-        doc = (n.get("docstring") or "").strip().splitlines()
-        doc0 = doc[0][:100] if doc else ""
-        tooltip = (
-            f"<b>{kind}</b>: {qualname}<br>"
-            f"<i>{module}</i>"
-            + (f"  line {lineno}" if lineno else "")
-            + (f"<br>{doc0}" if doc0 else "")
-        )
         border_color = "#FFD700" if n["id"] in seed_ids else color
+        tooltip = _build_node_tooltip(n, color)
         net.add_node(
             n["id"],
             label=label,
@@ -227,6 +289,16 @@ def _build_pyvis(
             borderWidth=3 if n["id"] in seed_ids else 1,
             font={"size": 11},
         )
+        node_data_js[n["id"]] = {
+            "id": n["id"],
+            "kind": kind,
+            "color": color,
+            "qualname": n.get("qualname") or n.get("name", ""),
+            "module": n.get("module_path") or "",
+            "lineno": n.get("lineno"),
+            "end_lineno": n.get("end_lineno"),
+            "docstring": (n.get("docstring") or "").strip(),
+        }
 
     for e in edges:
         rel = e.get("rel", "")
@@ -246,7 +318,269 @@ def _build_pyvis(
     net.save_graph(tmp_path)
     html = Path(tmp_path).read_text(encoding="utf-8")
     os.unlink(tmp_path)
+
+    # Inject: floating click-detail panel + node data map
+    node_data_json = json.dumps(node_data_js, ensure_ascii=False)
+
+    panel_css = """
+<style>
+#codekg-panel {
+  display: none;
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 340px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #1e1e2e;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  z-index: 9999;
+  font-family: sans-serif;
+  font-size: 13px;
+  color: #e0e0e0;
+}
+#codekg-panel-inner { padding: 14px 16px 16px 16px; }
+#codekg-panel-close {
+  position: absolute;
+  top: 8px; right: 10px;
+  cursor: pointer;
+  font-size: 18px;
+  color: #888;
+  line-height: 1;
+  background: none;
+  border: none;
+}
+#codekg-panel-close:hover { color: #fff; }
+#codekg-panel-docstring {
+  background: #12121f;
+  border: 1px solid #2a2a3e;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #c9d1d9;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+</style>
+"""
+
+    panel_html = """
+<div id="codekg-panel">
+  <button id="codekg-panel-close" onclick="document.getElementById('codekg-panel').style.display='none'">✕</button>
+  <div id="codekg-panel-inner">
+    <div id="codekg-panel-badge"></div>
+    <div id="codekg-panel-qualname" style="font-size:15px;font-weight:bold;margin:6px 0 2px 0;"></div>
+    <div id="codekg-panel-meta" style="color:#888;font-size:11px;font-family:monospace;"></div>
+    <div id="codekg-panel-id" style="color:#444;font-size:10px;font-family:monospace;margin-top:2px;"></div>
+    <div id="codekg-panel-docstring"></div>
+  </div>
+</div>
+"""
+
+    panel_js = f"""
+<script>
+(function() {{
+  var NODE_DATA = {node_data_json};
+
+  function showPanel(nodeId) {{
+    var n = NODE_DATA[nodeId];
+    if (!n) return;
+
+    var panel = document.getElementById('codekg-panel');
+    var badge = document.getElementById('codekg-panel-badge');
+    var qname = document.getElementById('codekg-panel-qualname');
+    var meta  = document.getElementById('codekg-panel-meta');
+    var nid   = document.getElementById('codekg-panel-id');
+    var doc   = document.getElementById('codekg-panel-docstring');
+
+    badge.innerHTML = '<span style="background:' + n.color + ';color:#fff;border-radius:4px;' +
+      'padding:2px 8px;font-size:11px;font-weight:bold;font-family:monospace;">' +
+      n.kind + '</span>';
+
+    qname.textContent = n.qualname;
+    qname.style.color = '#f0f0f0';
+
+    var lineStr = '';
+    if (n.lineno && n.end_lineno && n.end_lineno !== n.lineno) {{
+      lineStr = ' · lines ' + n.lineno + '–' + n.end_lineno;
+    }} else if (n.lineno) {{
+      lineStr = ' · line ' + n.lineno;
+    }}
+    meta.textContent = (n.module || '—') + lineStr;
+
+    nid.textContent = 'id: ' + n.id;
+
+    if (n.docstring) {{
+      doc.style.display = 'block';
+      doc.textContent = n.docstring;
+    }} else {{
+      doc.style.display = 'block';
+      doc.textContent = '(no docstring)';
+      doc.style.color = '#555';
+    }}
+
+    panel.style.borderLeft = '5px solid ' + n.color;
+    panel.style.display = 'block';
+  }}
+
+  function waitForNetwork() {{
+    if (typeof network === 'undefined') {{
+      setTimeout(waitForNetwork, 200);
+      return;
+    }}
+    network.on('click', function(params) {{
+      if (params.nodes && params.nodes.length > 0) {{
+        showPanel(String(params.nodes[0]));
+      }} else {{
+        // click on empty space — hide panel
+        document.getElementById('codekg-panel').style.display = 'none';
+      }}
+    }});
+  }}
+  waitForNetwork();
+}})();
+</script>
+"""
+
+    html = html.replace("</head>", panel_css + "\n</head>")
+    html = html.replace("</body>", panel_html + panel_js + "\n</body>")
     return html
+
+
+# ---------------------------------------------------------------------------
+# Node detail panel
+# ---------------------------------------------------------------------------
+
+def _render_node_detail(node: dict, store: Optional[GraphStore] = None) -> None:
+    """
+    Render a rich detail card for a single node.
+
+    Shows: kind badge, qualname, module + line range, full docstring,
+    and (if store is provided) the node's immediate edges.
+    """
+    kind = node.get("kind", "symbol")
+    color = _KIND_COLOR.get(kind, "#95A5A6")
+    qualname = node.get("qualname") or node.get("name", "")
+    module = node.get("module_path") or ""
+    lineno = node.get("lineno")
+    end_lineno = node.get("end_lineno")
+    docstring = (node.get("docstring") or "").strip()
+    node_id = node.get("id", "")
+
+    # Line range
+    if lineno and end_lineno and end_lineno != lineno:
+        line_str = f"lines {lineno} – {end_lineno}"
+    elif lineno:
+        line_str = f"line {lineno}"
+    else:
+        line_str = "—"
+
+    st.markdown(
+        f"""
+        <div style="background:#1e1e2e;border-left:5px solid {color};
+                    border-radius:8px;padding:14px 18px;margin-bottom:8px;">
+          <span style="background:{color};color:#fff;border-radius:4px;
+                       padding:2px 9px;font-size:12px;font-weight:bold;
+                       font-family:monospace;">{kind}</span>
+          &nbsp;
+          <span style="font-size:17px;font-weight:bold;color:#f0f0f0;">
+            {qualname}
+          </span>
+          <br>
+          <span style="color:#888;font-size:12px;font-family:monospace;">
+            📄 {module or "—"} &nbsp;·&nbsp; {line_str}
+          </span>
+          <br>
+          <span style="color:#555;font-size:10px;font-family:monospace;">
+            id: {node_id}
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if docstring:
+        st.markdown("**📝 Docstring**")
+        st.markdown(
+            f"""
+            <div style="background:#12121f;border-radius:6px;padding:10px 14px;
+                        font-family:monospace;font-size:13px;color:#c9d1d9;
+                        white-space:pre-wrap;border:1px solid #2a2a3e;">
+{docstring.replace("<", "&lt;").replace(">", "&gt;")}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption("*No docstring.*")
+
+    # Immediate edges from the store
+    if store and node_id:
+        st.markdown("**🔗 Edges**")
+        try:
+            rows = store.con.execute(
+                "SELECT src, rel, dst FROM edges WHERE src = ? OR dst = ? LIMIT 60",
+                (node_id, node_id),
+            ).fetchall()
+            if rows:
+                import pandas as pd
+                edf = pd.DataFrame(
+                    [{"src": r[0], "rel": r[1], "dst": r[2]} for r in rows]
+                )
+                st.dataframe(edf, use_container_width=True, hide_index=True)
+            else:
+                st.caption("*No edges.*")
+        except Exception:
+            pass
+
+
+def _node_detail_section(
+    nodes: List[dict],
+    store: Optional[GraphStore],
+    *,
+    key_prefix: str = "detail",
+) -> None:
+    """
+    Render a searchable node-detail section below a graph.
+
+    Users pick a node from a selectbox (or type a name) and see the full
+    detail card.  This is the Streamlit-native complement to the pyvis
+    hover tooltip — it persists on screen and shows the complete docstring
+    plus edge table.
+    """
+    if not nodes:
+        return
+
+    st.markdown("---")
+    st.subheader("🔎 Node Detail")
+
+    # Build label → node mapping (qualname preferred, fall back to name)
+    label_map: Dict[str, dict] = {}
+    for n in nodes:
+        lbl = n.get("qualname") or n.get("name") or n["id"]
+        # Disambiguate duplicates
+        if lbl in label_map:
+            lbl = f"{lbl}  [{n['id']}]"
+        label_map[lbl] = n
+
+    options = ["— select a node —"] + sorted(label_map.keys())
+    chosen = st.selectbox(
+        "Select node to inspect",
+        options=options,
+        index=0,
+        key=f"{key_prefix}_node_select",
+        help="Pick any node to see its full docstring and edges.",
+    )
+
+    if chosen and chosen != "— select a node —":
+        node = label_map.get(chosen)
+        if node:
+            _render_node_detail(node, store=store)
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +653,7 @@ def _render_sidebar() -> dict:
     )
     lancedb_dir = st.sidebar.text_input(
         "LanceDB dir",
-        value="./lancedb",
+        value=_DEFAULT_LANCEDB,
         help="Directory for the LanceDB vector index",
     )
     model = st.sidebar.selectbox(
@@ -517,6 +851,9 @@ def _tab_graph(cfg: dict) -> None:
         ])
         st.dataframe(df, use_container_width=True, hide_index=True)
 
+    # Node detail panel — hover tooltip complement
+    _node_detail_section(nodes, store, key_prefix="graph")
+
 
 # ---------------------------------------------------------------------------
 # Tab 2 — Hybrid query
@@ -626,6 +963,9 @@ def _tab_query(cfg: dict) -> None:
             mime="application/json",
         )
         st.code(result.to_json(), language="json")
+
+    # Node detail panel — below the sub-tabs
+    _node_detail_section(result.nodes, store, key_prefix="query")
 
 
 # ---------------------------------------------------------------------------

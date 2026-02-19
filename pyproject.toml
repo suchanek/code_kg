@@ -29,6 +29,13 @@ streamlit = ">=1.35.0"
 pyvis = ">=0.3.2"
 pandas = ">=2.0.0"
 
+[tool.poetry.dependencies.mcp]
+version = ">=1.0.0"
+optional = true
+
+[tool.poetry.extras]
+mcp = ["mcp"]
+
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
 pytest-cov = ">=5.0.0"
@@ -42,6 +49,7 @@ codekg-build-lancedb = "code_kg.build_codekg_lancedb:main"
 codekg-query         = "code_kg.codekg_query:main"
 codekg-pack          = "code_kg.codekg_snippet_packer:main"
 codekg-viz           = "code_kg.codekg_viz:main"
+codekg-mcp           = "code_kg.mcp_server:main"
 
 [tool.ruff]
 line-length = 100
