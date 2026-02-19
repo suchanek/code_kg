@@ -122,7 +122,10 @@ class GraphStore:
         """Lazy SQLite connection (created on first access)."""
         if self._con is None:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._con = sqlite3.connect(str(self.db_path))
+            self._con = sqlite3.connect(
+                str(self.db_path),
+                check_same_thread=False,  # safe: GraphStore is read-heavy; writes are serialised by SQLite WAL
+            )
             self._con.executescript(_SCHEMA_SQL)
         return self._con
 
