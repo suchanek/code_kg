@@ -93,10 +93,41 @@ This installs, builds, smoke-tests, and writes both config files automatically.
 | `pack_snippets(q)` | Read actual source code (prefer over query_codebase) |
 | `get_node(node_id)` | Fetch metadata for a specific node by ID |
 
+## Query Strategy Guide
+
+### Choosing `k` and `hop`
+
+| Goal | Settings |
+|---|---|
+| Narrow, precise lookup | `k=4, hop=0` |
+| Standard exploration | `k=8, hop=1` (default) |
+| Broad context sweep | `k=12, hop=2` |
+| Deep dependency trace | `k=8, hop=2, rels="CALLS,IMPORTS"` |
+
+### Choosing `rels`
+
+| Relation | When to include |
+|---|---|
+| `CONTAINS` | Almost always — structural context |
+| `CALLS` | Tracing execution flow |
+| `IMPORTS` | Dependency analysis |
+| `INHERITS` | OOP hierarchy |
+
+### Typical session workflow
+
+```
+1. graph_stats()                                    → orientation
+2. query_codebase("auth flow", k=8, hop=1)          → find nodes
+3. pack_snippets("JWT validation", k=6, hop=1)      → read source
+4. get_node("fn:src/auth/jwt.py:JWTValidator.validate")  → node detail
+5. pack_snippets("error handling", k=4, hop=2, rels="CALLS")  → deeper
+```
+
 ## Key Defaults
 
 - `k=8, hop=1, rels="CONTAINS,CALLS,IMPORTS,INHERITS"`
 - Node ID format: `<kind>:<module_path>:<qualname>` (e.g. `fn:src/auth/jwt.py:JWTValidator.validate`)
+- Node ID prefixes: `mod:` module, `cls:` class, `fn:` function/method, `sym:` external symbol
 - Transport: `stdio` (Claude Code/Desktop), `sse` (HTTP clients)
 
 ## Troubleshooting
