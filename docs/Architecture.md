@@ -13,6 +13,14 @@ CodeKG constructs a deterministic, explainable knowledge graph from a Python cod
 
 Structure is treated as **ground truth**. Semantic search is strictly an acceleration layer. Every node and edge maps to a concrete file and line number.
 
+The system ships with:
+- A **Python library** (`code_kg`) with a layered class API
+- **CLI entry points** for building and querying the graph
+- A **Streamlit web application** (`app.py`) for interactive exploration
+- A **Docker image** for zero-install deployment
+- An **MCP server** (`codekg-mcp`) for AI agent integration
+- A **`/setup-mcp` Claude skill** for automated MCP configuration
+
 ---
 
 ## Design Principles
@@ -329,9 +337,248 @@ Module nodes show the top-of-file window. Nodes without line info fall back to t
 
 ---
 
+## Streamlit Web Application (`app.py`)
+
+CodeKG ships an interactive knowledge-graph explorer built with **Streamlit** and **pyvis**.
+
+```bash
+# Launch locally
+codekg-viz [--db codekg.sqlite] [--port 8501]
+
+# Or directly
+streamlit run app.py
+```
+
+The application provides three tabs:
+
+| Tab | Description |
+|---|---|
+| **🗺️ Graph Browser** | Interactive pyvis graph of the full knowledge graph; filter by node kind or module path; click nodes for rich detail panels |
+| **🔍 Hybrid Query** | Natural-language query → semantic seeds → graph expansion → ranked node results with graph, table, edge, and JSON views |
+| **📦 Snippet Pack** | Query → source-grounded code snippets with download buttons for Markdown and JSON |
+
+The sidebar exposes all build and query controls:
+- **Build Graph** — AST extraction → SQLite (fast, no embeddings)
+- **Build Index** — embed nodes → LanceDB
+- **Build All** — full pipeline in one click
+
+The app reads `CODEKG_DB` and `CODEKG_LANCEDB` environment variables so the Docker image works out of the box without manual path configuration.
+
+---
+
+## Docker Image
+
+CodeKG ships a Docker image that packages the Streamlit app with all heavy dependencies (`sentence-transformers`, `lancedb`, `pyvis`, `torch`) into a single portable container.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Host machine                                           │
+│                                                         │
+│  /path/to/repo  ──(read-only)──▶  /workspace  ┐        │
+│                                                │        │
+│  Docker volume codekg-data ◀──────────────────┤        │
+│    /data/codekg.sqlite                         │        │
+│    /data/lancedb/                              │        │
+│                                                │        │
+│  localhost:8501 ◀──────────────────────────────┘        │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Quick Start
+
+```bash
+# Build
+docker build -t codekg:latest .
+
+# Run (analyse current directory)
+docker run -p 8501:8501 \
+  -v $(pwd):/workspace:ro \
+  -v codekg-data:/data \
+  codekg:latest
+```
+
+Open **http://localhost:8501** in your browser.
+
+### Docker Compose (recommended)
+
+```bash
+# Start (build if needed, detached)
+docker compose up -d
+
+# Analyse a specific repo
+REPO_ROOT=/path/to/your/repo docker compose up -d
+
+# Use a different host port
+CODEKG_PORT=8510 docker compose up -d
+
+# Stop (volume preserved)
+docker compose down
+
+# Full reset (wipes graph data)
+docker compose down -v
+```
+
+### Key Design Decisions
+
+- **`python:3.11-slim`** base image — keeps the image small
+- **Poetry 2.x** for reproducible dependency installation
+- **Layer ordering** — `pyproject.toml`/`poetry.lock` copied before source files; source-only changes rebuild in seconds, not minutes
+- **Named volume `codekg-data`** — SQLite graph and LanceDB index persist across container restarts
+- **Read-only workspace mount** — the analysed repository is never modified
+
+### Docker Files
+
+| File | Purpose |
+|---|---|
+| `Dockerfile` | Image definition (python:3.11-slim + Poetry 2.x) |
+| `docker-compose.yml` | Service orchestration with volumes, env vars, healthcheck |
+| `.dockerignore` | Keeps build context lean |
+| `.streamlit/config.toml` | Baked-in Streamlit server config (headless, dark theme) |
+
+### Environment Variables
+
+| Variable | Default (container) | Description |
+|---|---|---|
+| `CODEKG_DB` | `/data/codekg.sqlite` | SQLite knowledge graph path |
+| `CODEKG_LANCEDB` | `/data/lancedb` | LanceDB vector index directory |
+| `CODEKG_PORT` | `8501` | Host port (compose only) |
+| `REPO_ROOT` | `./` | Host path mounted at `/workspace` (compose only) |
+
+See `docs/docker.md` for the full Docker reference.
+
+---
+
+## MCP Server (`mcp_server.py`)
+
+CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the full hybrid query and snippet-pack pipeline as structured tools consumable by any MCP-compatible AI agent — Claude Desktop, Cursor, Continue, or any custom agent.
+
+The server is a thin wrapper around `CodeKG`. It initialises a single `CodeKG` instance at startup and routes tool calls to it. All logic lives in the existing library; the MCP layer adds no logic of its own.
+
+### Starting the Server
+
+```bash
+codekg-mcp \
+  --repo    /path/to/repo \
+  --db      /path/to/codekg.sqlite \
+  --lancedb /path/to/lancedb
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--repo` | `.` | Repository root (for snippet path resolution) |
+| `--db` | `codekg.sqlite` | SQLite knowledge graph |
+| `--lancedb` | `./lancedb` | LanceDB vector index directory |
+| `--model` | `all-MiniLM-L6-v2` | Sentence-transformer embedding model |
+| `--transport` | `stdio` | `stdio` (Claude Desktop) or `sse` (HTTP clients) |
+
+### Prerequisites
+
+The SQLite graph and LanceDB index must be built before starting the server:
+
+```bash
+codekg-build-sqlite --repo /path/to/repo --db codekg.sqlite
+codekg-build-lancedb --db codekg.sqlite --lancedb ./lancedb
+```
+
+The `mcp` package is an optional dependency:
+
+```bash
+pip install "code-kg[mcp]"
+# or
+poetry add mcp
+```
+
+### Available Tools
+
+| Tool | Description |
+|---|---|
+| `query_codebase(q, k, hop, rels, include_symbols)` | Hybrid semantic + structural query; returns ranked nodes and edges as JSON |
+| `pack_snippets(q, k, hop, rels, include_symbols, context, max_lines, max_nodes)` | Hybrid query + source-grounded snippet extraction; returns Markdown |
+| `get_node(node_id)` | Fetch a single node by its stable ID; returns JSON |
+| `graph_stats()` | Node and edge counts by kind/relation; returns JSON |
+
+### Configuring Claude Desktop
+
+Add a `codekg` entry to `claude_desktop_config.json`
+(macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "codekg": {
+      "command": "codekg-mcp",
+      "args": [
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/lancedb"
+      ]
+    }
+  }
+}
+```
+
+Use **absolute paths** — Claude Desktop does not inherit the shell's working directory.
+
+### Configuring Claude Code (`.mcp.json`)
+
+For Claude Code, use `poetry run` so the entry point resolves correctly:
+
+```json
+{
+  "mcpServers": {
+    "codekg": {
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/path/to/repo",
+        "--db",      "/path/to/codekg.sqlite",
+        "--lancedb", "/path/to/lancedb"
+      ]
+    }
+  }
+}
+```
+
+### Transport Modes
+
+| Mode | Use case |
+|---|---|
+| `stdio` (default) | Claude Desktop and local agent frameworks; protocol runs over stdin/stdout |
+| `sse` | HTTP-based clients; server listens on a port and streams events |
+
+### MCP Server Properties
+
+- **Read-only** — the server never modifies the graph
+- **Stateful** — one `CodeKG` instance per server process, shared across all tool calls
+- **Lazy** — the embedder and LanceDB connection are only created on first use
+
+See `docs/MCP.md` for the full MCP reference including query strategy guide, tool schemas, and troubleshooting.
+
+---
+
+## `/setup-mcp` Claude Skill
+
+The repository ships a **Claude skill** at `.claude/commands/setup-mcp.md` that automates the full MCP setup workflow. Invoke it from Claude Code:
+
+```
+/setup-mcp [/path/to/repo]
+```
+
+The skill executes these steps in sequence:
+
+1. **Resolve the target repository** — verifies the path contains Python files
+2. **Verify CodeKG installation** — checks `codekg-mcp` is available; installs the `mcp` extra if needed
+3. **Build the SQLite graph** — runs `codekg-build-sqlite`, reports node/edge counts
+4. **Build the LanceDB index** — runs `codekg-build-lancedb`, reports vector count
+5. **Smoke-test the pipeline** — runs `kg.stats()` and a sample query end-to-end
+6. **Configure MCP clients** — writes/updates both `.mcp.json` (Claude Code) and `claude_desktop_config.json` (Claude Desktop) with correct absolute paths
+7. **Final report** — summarises all steps and reminds the user to restart their agent
+
+---
+
 ## CLI Entry Points
 
-All four entry points are registered in `pyproject.toml`:
+All six entry points are registered in `pyproject.toml`:
 
 | Command | Module | Description |
 |---|---|---|
@@ -339,6 +586,8 @@ All four entry points are registered in `pyproject.toml`:
 | `codekg-build-lancedb` | `build_codekg_lancedb` | SQLite → LanceDB |
 | `codekg-query` | `codekg_query` | hybrid query, text output |
 | `codekg-pack` | `codekg_snippet_packer` | hybrid query + snippet pack |
+| `codekg-viz` | `codekg_viz` | launch Streamlit visualizer |
+| `codekg-mcp` | `mcp_server` | start MCP server |
 
 Each CLI module is a thin wrapper that constructs the appropriate class(es) and delegates.
 
@@ -347,22 +596,34 @@ Each CLI module is a thin wrapper that constructs the appropriate class(es) and 
 ## Source Layout
 
 ```
-src/code_kg/
-├── codekg.py                # Locked v0 primitives: Node, Edge, extract_repo
-├── graph.py                 # CodeGraph — pure AST extraction
-├── store.py                 # GraphStore — SQLite persistence + traversal
-├── index.py                 # SemanticIndex, Embedder, SeedHit
-├── kg.py                    # CodeKG orchestrator + BuildStats, QueryResult, SnippetPack
-├── build_codekg_sqlite.py   # CLI: repo → SQLite
-├── build_codekg_lancedb.py  # CLI: SQLite → LanceDB
-├── codekg_query.py          # CLI: hybrid query
-└── codekg_snippet_packer.py # CLI: snippet pack
-
-tests/
-├── test_primitives.py       # Node, Edge, extract_repo, helpers (40 tests)
-├── test_graph.py            # CodeGraph (12 tests)
-├── test_store.py            # GraphStore (18 tests)
-└── test_kg.py               # CodeKG, result types, span utilities (28 tests)
+code_kg/
+├── src/code_kg/
+│   ├── codekg.py                # Locked v0 primitives: Node, Edge, extract_repo
+│   ├── graph.py                 # CodeGraph — pure AST extraction
+│   ├── store.py                 # GraphStore — SQLite persistence + traversal
+│   ├── index.py                 # SemanticIndex, Embedder, SeedHit
+│   ├── kg.py                    # CodeKG orchestrator + BuildStats, QueryResult, SnippetPack
+│   ├── build_codekg_sqlite.py   # CLI: repo → SQLite
+│   ├── build_codekg_lancedb.py  # CLI: SQLite → LanceDB
+│   ├── codekg_query.py          # CLI: hybrid query
+│   ├── codekg_snippet_packer.py # CLI: snippet pack
+│   ├── codekg_viz.py            # CLI: launch Streamlit visualizer
+│   └── mcp_server.py            # MCP server (FastMCP, optional dep)
+├── app.py                       # Streamlit web application
+├── Dockerfile                   # Docker image definition
+├── docker-compose.yml           # Docker Compose service
+├── .streamlit/config.toml       # Streamlit server config
+├── .mcp.json                    # Claude Code MCP configuration
+├── .claude/commands/setup-mcp.md # /setup-mcp Claude skill
+├── tests/
+│   ├── test_primitives.py       # Node, Edge, extract_repo, helpers (40 tests)
+│   ├── test_graph.py            # CodeGraph (12 tests)
+│   ├── test_store.py            # GraphStore (18 tests)
+│   └── test_kg.py               # CodeKG, result types, span utilities (28 tests)
+└── docs/
+    ├── Architecture.md          # This document
+    ├── MCP.md                   # MCP server reference
+    └── docker.md                # Docker setup reference
 ```
 
 ---
@@ -399,6 +660,9 @@ Repository (.py files)
         │
         ▼
   Markdown / JSON output
+        │
+        ├──▶  Streamlit app (app.py)     ← interactive browser
+        └──▶  MCP server (mcp_server.py) ← AI agent tools
 ```
 
 ---
@@ -410,7 +674,16 @@ Repository (.py files)
 | `lancedb ≥ 0.6.0` | Vector database for semantic index |
 | `sentence-transformers ≥ 2.7.0` | Local embedding model |
 | `numpy ≥ 1.24.0` | Vector arithmetic |
+| `streamlit ≥ 1.35.0` | Web application framework |
+| `pyvis ≥ 0.3.2` | Interactive graph visualization |
+| `pandas ≥ 2.0.0` | Tabular data display in Streamlit |
+| `mcp ≥ 1.0.0` *(optional)* | Model Context Protocol server |
 | Python `ast` (stdlib) | AST parsing — no external dep |
 | Python `sqlite3` (stdlib) | Relational graph store |
 
 Python ≥ 3.10, < 3.13.
+
+Install the MCP extra with:
+```bash
+pip install "code-kg[mcp]"
+```
