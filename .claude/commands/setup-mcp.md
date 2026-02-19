@@ -132,28 +132,64 @@ Run a quick end-to-end test to confirm the full pipeline works before configurin
 
 Configure the per-repo `.mcp.json`, Claude Desktop (`claude_desktop_config.json`) if applicable, and install the CodeKG skill globally.
 
-### Design principle: per-repo `.mcp.json` only (Kilo Code & Claude Code)
+### MCP config by agent — quick reference
 
-> ⚠️ **Do NOT add `codekg` to the global Kilo Code / Claude Code `mcp_settings.json`.**
->
-> The global settings file is shared across all VS Code windows. Adding `codekg` there with hardcoded paths means every window points to the same repo — which is wrong when you have multiple projects open.
->
-> The correct pattern is **per-repo `.mcp.json`**:
-> - Each repository has its own `.mcp.json` in its root directory.
-> - The `codekg` entry in `.mcp.json` contains paths specific to that repo.
-> - Kilo Code / Claude Code reads `.mcp.json` from the workspace root, so each window automatically uses the right config.
-> - The global `mcp_settings.json` should have an **empty `mcpServers` object** (or no `codekg` entry at all).
+| Agent | Config file | Per-repo? | Key name |
+|-------|-------------|-----------|----------|
+| **GitHub Copilot** | `.vscode/mcp.json` | ✅ Yes | `"servers"` |
+| **Kilo Code** | `.mcp.json` (project root) | ✅ Yes | `"mcpServers"` |
+| **Claude Code** | `.mcp.json` (project root) | ✅ Yes | `"mcpServers"` |
+| **Cline** | `~/...saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | ❌ Global only | `"mcpServers"` |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | ❌ Global only | `"mcpServers"` |
 
-> ⚠️ **Cline does NOT support `.mcp.json`.**
->
-> Cline (extension ID: `saoudrizwan.claude-dev`) uses a single global file:
-> `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
->
-> Since this is global-only, there is no native per-repo config in Cline. Options:
-> - **Recommended:** Use **Kilo Code** (extension ID: `kilocode.kilo-code`) for projects where you want `codekg` — it supports `.mcp.json` properly.
-> - **Alternative:** Add a distinctly-named entry per repo in `cline_mcp_settings.json` (e.g. `codekg-myrepo`) and enable/disable as needed via the Cline MCP panel.
+> ⚠️ **Do NOT add `codekg` to any global settings file** (Kilo Code `mcp_settings.json`, Cline `cline_mcp_settings.json`).
+> Global files are shared across all windows — hardcoded paths will point every window to the same repo.
+> Use per-repo config files (`.vscode/mcp.json` for Copilot, `.mcp.json` for Kilo Code/Claude Code) instead.
 
-### 5a: Kilo Code / Claude Code (.mcp.json)
+> ⚠️ **Cline does NOT support per-repo config.**
+> Options: use Kilo Code instead, or add a uniquely-named entry per repo in `cline_mcp_settings.json` and toggle via the Cline MCP panel.
+
+### 5a: GitHub Copilot (.vscode/mcp.json)
+
+GitHub Copilot in VS Code reads MCP servers from `.vscode/mcp.json` in the workspace root. Note the key differences from `.mcp.json`:
+- Uses `"servers"` (not `"mcpServers"`)
+- Requires `"type": "stdio"` for local servers
+- Can be committed to source control to share with the team
+
+1. Check if `.vscode/mcp.json` exists in `$REPO_ROOT`:
+   ```bash
+   cat "$REPO_ROOT/.vscode/mcp.json" 2>/dev/null
+   ```
+
+2. If it exists, check for an existing `codekg` entry under `servers`.
+   - If one exists, ask the user to replace or keep it.
+
+3. The `codekg` entry to add/update:
+   ```json
+   {
+     "servers": {
+       "codekg": {
+         "type": "stdio",
+         "command": "poetry",
+         "args": [
+           "run", "codekg-mcp",
+           "--repo",    "<REPO_ROOT>",
+           "--db",      "<DB_PATH>",
+           "--lancedb", "<LANCEDB_DIR>"
+         ],
+         "env": {
+           "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+         }
+       }
+     }
+   }
+   ```
+
+4. Merge into the existing `servers` object — do not overwrite other entries.
+
+5. After saving, VS Code will prompt you to trust the MCP server — click **Trust** to activate it.
+
+### 5b: Kilo Code / Claude Code (.mcp.json)
 
 Both Kilo Code and Claude Code read MCP servers from `.mcp.json` in the project root. Use `poetry run` so the entry point resolves correctly regardless of venv path.
 
@@ -189,7 +225,7 @@ Both Kilo Code and Claude Code read MCP servers from `.mcp.json` in the project 
    - If a `codekg` entry exists in either global file, remove it and leave `"mcpServers": {}`.
    - This prevents the static-path conflict where all windows point to the same repo.
 
-### 5b: Claude Desktop (claude_desktop_config.json)
+### 5c: Claude Desktop (claude_desktop_config.json)
 
 Claude Desktop does not have Poetry on its PATH, so use the absolute path to the venv binary.
 
@@ -227,7 +263,7 @@ Claude Desktop does not have Poetry on its PATH, so use the absolute path to the
 
 7. Show the user the final `codekg` block that was written.
 
-### 5c: Install the CodeKG Skill (Global)
+### 5d: Install the CodeKG Skill (Global)
 
 The CodeKG skill provides AI agents with expert knowledge about CodeKG installation and usage. It must be installed to the correct directory for each agent:
 
