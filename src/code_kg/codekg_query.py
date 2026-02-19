@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-codekg_query_v0.py
+codekg_query.py
 
 Hybrid query over Code Knowledge Graph:
 - semantic retrieval (LanceDB vector search)
 - structural expansion (SQLite)
 
-v0 upgrades:
+Features:
 - cache embed model
 - filter symbol nodes by default
 - print edges among returned nodes

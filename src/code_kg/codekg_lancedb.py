@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-codekg_lancedb_v0.py
+codekg_lancedb.py
 
-Derived semantic index for the v0 Code Knowledge Graph.
+Derived semantic index for the Code Knowledge Graph.
 
 Reads nodes from SQLite and writes vectors to LanceDB.
 SQLite remains authoritative; LanceDB is disposable.
@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 import lancedb
 import numpy as np

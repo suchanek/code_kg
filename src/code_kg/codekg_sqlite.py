@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-codekg_sqlite_v0.py
+codekg_sqlite.py
 
-SQLite persistence layer for the v0 Code Knowledge Graph.
+SQLite persistence layer for the Code Knowledge Graph.
 
 SQLite is the authoritative store:
 - nodes table
@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import asdict
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Sequence
 
-from codekg_v0 import Edge, Node
+from code_kg.codekg import Edge, Node
 
 SCHEMA_SQL = """
 PRAGMA journal_mode=WAL;
