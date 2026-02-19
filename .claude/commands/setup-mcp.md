@@ -130,11 +130,32 @@ Run a quick end-to-end test to confirm the full pipeline works before configurin
 
 ## Step 5: Configure MCP Clients
 
-Configure both Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`) if applicable, and install the CodeKG skill globally.
+Configure the per-repo `.mcp.json`, Claude Desktop (`claude_desktop_config.json`) if applicable, and install the CodeKG skill globally.
 
-### 5a: Claude Code (.mcp.json)
+### Design principle: per-repo `.mcp.json` only (Kilo Code & Claude Code)
 
-Claude Code reads MCP servers from `.mcp.json` in the project root. Use `poetry run` so the entry point resolves correctly regardless of venv path.
+> ⚠️ **Do NOT add `codekg` to the global Kilo Code / Claude Code `mcp_settings.json`.**
+>
+> The global settings file is shared across all VS Code windows. Adding `codekg` there with hardcoded paths means every window points to the same repo — which is wrong when you have multiple projects open.
+>
+> The correct pattern is **per-repo `.mcp.json`**:
+> - Each repository has its own `.mcp.json` in its root directory.
+> - The `codekg` entry in `.mcp.json` contains paths specific to that repo.
+> - Kilo Code / Claude Code reads `.mcp.json` from the workspace root, so each window automatically uses the right config.
+> - The global `mcp_settings.json` should have an **empty `mcpServers` object** (or no `codekg` entry at all).
+
+> ⚠️ **Cline does NOT support `.mcp.json`.**
+>
+> Cline (extension ID: `saoudrizwan.claude-dev`) uses a single global file:
+> `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+>
+> Since this is global-only, there is no native per-repo config in Cline. Options:
+> - **Recommended:** Use **Kilo Code** (extension ID: `kilocode.kilo-code`) for projects where you want `codekg` — it supports `.mcp.json` properly.
+> - **Alternative:** Add a distinctly-named entry per repo in `cline_mcp_settings.json` (e.g. `codekg-myrepo`) and enable/disable as needed via the Cline MCP panel.
+
+### 5a: Kilo Code / Claude Code (.mcp.json)
+
+Both Kilo Code and Claude Code read MCP servers from `.mcp.json` in the project root. Use `poetry run` so the entry point resolves correctly regardless of venv path.
 
 1. Check if `.mcp.json` exists in `$REPO_ROOT`:
    ```bash
@@ -153,11 +174,20 @@ Claude Code reads MCP servers from `.mcp.json` in the project root. Use `poetry 
        "--repo",    "<REPO_ROOT>",
        "--db",      "<DB_PATH>",
        "--lancedb", "<LANCEDB_DIR>"
-     ]
+     ],
+     "env": {
+       "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+     }
    }
    ```
 
 4. Merge into the existing `mcpServers` object — do not overwrite other entries.
+
+5. **Verify the global settings file does NOT contain a `codekg` entry:**
+   - Kilo Code global config: `~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json`
+   - Claude Code global config: `~/.claude/settings.json` (or `~/Library/Application Support/Claude/settings.json`)
+   - If a `codekg` entry exists in either global file, remove it and leave `"mcpServers": {}`.
+   - This prevents the static-path conflict where all windows point to the same repo.
 
 ### 5b: Claude Desktop (claude_desktop_config.json)
 
@@ -199,46 +229,50 @@ Claude Desktop does not have Poetry on its PATH, so use the absolute path to the
 
 ### 5c: Install the CodeKG Skill (Global)
 
-The CodeKG skill provides Claude with expert knowledge about CodeKG installation and usage. It lives in the `code_kg` repo and must be copied to `~/.claude/skills/` so the `skills-copilot` MCP server can serve it globally across all projects.
+The CodeKG skill provides AI agents with expert knowledge about CodeKG installation and usage. It must be installed to the correct directory for each agent:
 
-1. Locate the skill source in the `code_kg` repo. The repo is at the path where `code-kg` was installed from — find it:
+| Agent | Skill directory |
+|-------|----------------|
+| **Kilo Code** | `~/.kilocode/skills/codekg/` |
+| **Claude Code** | `~/.claude/skills/codekg/` (served by `skills-copilot` MCP server) |
+| **Other agents** | `~/.agents/skills/codekg/` |
+
+> ⚠️ **Kilo Code does NOT use `~/.claude/skills/` or `~/.agents/skills/`** — it reads from `~/.kilocode/skills/` only.
+
+The easiest way to install to all locations at once is the install script:
+
+```bash
+bash <CODE_KG_REPO>/scripts/install-skill.sh
+```
+
+Or manually:
+
+1. Locate the skill source in the `code_kg` repo:
    ```bash
    poetry run python -c "import code_kg; import pathlib; print(pathlib.Path(code_kg.__file__).parent.parent.parent)"
    ```
-   This prints the repo root (e.g. `/Users/you/repos/code_kg` or the pip cache path).
 
-   Alternatively, if the user cloned the repo, ask:
-   > "Where is the code_kg repository cloned? (e.g. /Users/you/repos/code_kg)"
-
-2. Check if the skill source exists:
+2. Check if already installed for Kilo Code:
    ```bash
-   ls "<CODE_KG_REPO>/.claude/skills/codekg/SKILL.md" 2>/dev/null && echo "SKILL_SOURCE_OK" || echo "SKILL_SOURCE_MISSING"
+   ls ~/.kilocode/skills/codekg/SKILL.md 2>/dev/null && echo "ALREADY_INSTALLED" || echo "NOT_INSTALLED"
    ```
 
-3. Check if the skill is already installed globally:
+3. Install/update to all locations:
    ```bash
-   ls ~/.claude/skills/codekg/SKILL.md 2>/dev/null && echo "ALREADY_INSTALLED" || echo "NOT_INSTALLED"
-   ```
+   # Kilo Code
+   mkdir -p ~/.kilocode/skills/codekg/references
+   cp "<CODE_KG_REPO>/.claude/skills/codekg/SKILL.md" ~/.kilocode/skills/codekg/SKILL.md
+   cp "<CODE_KG_REPO>/.claude/skills/codekg/references/installation.md" ~/.kilocode/skills/codekg/references/installation.md
 
-4. If `ALREADY_INSTALLED`, ask the user:
-   > "The codekg skill is already installed at `~/.claude/skills/codekg/`. Update it with the latest version from the repo?"
-   - **Yes**: proceed with copy (overwrites)
-   - **No**: skip to Step 6
-
-5. Copy the skill to the global skills directory:
-   ```bash
+   # Claude Code
    mkdir -p ~/.claude/skills/codekg/references
    cp "<CODE_KG_REPO>/.claude/skills/codekg/SKILL.md" ~/.claude/skills/codekg/SKILL.md
    cp "<CODE_KG_REPO>/.claude/skills/codekg/references/installation.md" ~/.claude/skills/codekg/references/installation.md
    ```
 
-6. Verify:
-   ```bash
-   ls -lh ~/.claude/skills/codekg/SKILL.md
-   ls -lh ~/.claude/skills/codekg/references/installation.md
-   ```
+4. **Reload VS Code** (`Cmd+Shift+P` → "Developer: Reload Window") for Kilo Code to pick up the new skill.
 
-7. If `SKILL_SOURCE_MISSING` (e.g. installed from pip cache, not a local clone), skip this step and note in the final report that the skill must be installed manually by cloning the repo.
+5. Verify the skill is loaded by asking the agent: "Do you have access to the codekg skill?"
 
 ---
 
