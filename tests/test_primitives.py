@@ -1,4 +1,9 @@
-"""Tests for code_kg.codekg."""
+"""
+test_primitives.py
+
+Tests for the locked v0 primitives in codekg.py:
+  Node, Edge, node_id, rel_module_path, expr_to_name, iter_python_files, extract_repo
+"""
 
 from __future__ import annotations
 
@@ -267,6 +272,24 @@ def test_extract_repo_no_duplicate_edges(tmp_path):
     assert len(import_edges) == 1
 
 
+def test_extract_repo_deterministic(tmp_path):
+    """Same input → same output (node/edge counts and IDs)."""
+    _write_repo(
+        tmp_path,
+        {
+            "mod.py": (
+                "class Foo:\n"
+                "    def run(self): pass\n"
+                "def bar(): pass\n"
+            )
+        },
+    )
+    nodes1, edges1 = extract_repo(tmp_path)
+    nodes2, edges2 = extract_repo(tmp_path)
+    assert {n.id for n in nodes1} == {n.id for n in nodes2}
+    assert {(e.src, e.rel, e.dst) for e in edges1} == {(e.src, e.rel, e.dst) for e in edges2}
+
+
 # ---------------------------------------------------------------------------
 # Node / Edge dataclasses
 # ---------------------------------------------------------------------------
@@ -286,3 +309,20 @@ def test_edge_evidence_defaults_none():
 def test_edge_with_evidence():
     e = Edge("a", "CALLS", "b", {"lineno": 5})
     assert e.evidence == {"lineno": 5}
+
+
+def test_node_fields():
+    n = Node(
+        id="fn:mod.py:foo",
+        kind="function",
+        name="foo",
+        qualname="foo",
+        module_path="mod.py",
+        lineno=10,
+        end_lineno=20,
+        docstring="Does foo.",
+    )
+    assert n.id == "fn:mod.py:foo"
+    assert n.kind == "function"
+    assert n.lineno == 10
+    assert n.docstring == "Does foo."
