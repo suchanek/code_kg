@@ -2,9 +2,10 @@
 # =============================================================================
 # install-skill.sh — Bootstrap the CodeKG skill on a new machine
 #
-# Installs to both:
-#   ~/.claude/skills/codekg/   (Claude Code)
-#   ~/.agents/skills/codekg/   (Kilo Code / VS Code)
+# Installs to:
+#   ~/.claude/skills/codekg/    (Claude Code — ~/.claude/commands/ for slash cmds)
+#   ~/.kilocode/skills/codekg/  (Kilo Code — ~/.kilocode/skills/ for agent skills)
+#   ~/.agents/skills/codekg/    (other agents)
 #
 # Usage (from the code_kg repo root):
 #   bash scripts/install-skill.sh
@@ -13,7 +14,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
 #
 # What it does:
-#   1. Creates skill directories for Claude Code and Kilo Code
+#   1. Creates skill directories for Claude Code, Kilo Code, and other agents
 #   2. Downloads SKILL.md and references/installation.md from GitHub
 #      (or copies from local repo if running from within the clone)
 #   3. Prints next steps
@@ -25,9 +26,10 @@ REPO="suchanek/code_kg"
 BRANCH="main"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 
-# Install to both Claude Code and Kilo Code skill directories
+# Install to Claude Code, Kilo Code, and other agent skill directories
 SKILL_DIRS=(
     "${HOME}/.claude/skills/codekg"
+    "${HOME}/.kilocode/skills/codekg"
     "${HOME}/.agents/skills/codekg"
 )
 
@@ -40,7 +42,7 @@ echo "╔═══════════════════════�
 echo "║       CodeKG Skill Installer                     ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
-echo "Installing for: Claude Code (~/.claude/skills) + Kilo Code (~/.agents/skills)"
+echo "Installing for: Claude Code (~/.claude/skills) + Kilo Code (~/.kilocode/skills) + other agents (~/.agents/skills)"
 echo ""
 
 # ── Install to each target directory ─────────────────────────────────────────
@@ -99,7 +101,16 @@ echo "  2. Build the knowledge graph:"
 echo "     poetry run codekg-build-sqlite  --repo . --db codekg.sqlite"
 echo "     poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb"
 echo ""
-echo "  3. Configure .mcp.json — see docs/MCP.md for the snippet"
-echo "     Or run /setup-mcp inside Claude Code for automated setup"
+echo "  3. Configure your AI agent:"
+echo ""
+echo "     Kilo Code / Claude Code (per-repo, recommended):"
+echo "       Add codekg entry to .mcp.json in your project root"
+echo "       Run /setup-mcp inside Kilo Code for automated setup"
+echo ""
+echo "     Cline (global config only):"
+echo "       Edit: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+echo "       Add a named entry: codekg-REPONAME (unique per repo)"
+echo "       Copy .clinerules template to your repo root:"
+echo "         cp ${REPO_ROOT}/.claude/skills/codekg/clinerules.md /path/to/myrepo/.clinerules"
 echo ""
 echo "  Full docs: https://github.com/suchanek/code_kg/blob/main/docs/MCP.md"
