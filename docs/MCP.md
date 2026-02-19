@@ -44,6 +44,24 @@ Or use the automated setup command inside Claude Code:
 
 ---
 
+## Bootstrap: New Machine Setup
+
+On a **brand-new machine** the Claude skill doesn't exist yet, so Claude won't know how to help you set up CodeKG. Install the skill first with a single command — no clone required:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+```
+
+Or, if you already have the repo cloned:
+
+```bash
+bash scripts/install-skill.sh
+```
+
+This installs `~/.claude/skills/codekg/` so that any Claude Code session (with `skills-copilot` running) will automatically have expert CodeKG knowledge available. Then proceed with the normal installation steps below.
+
+---
+
 ## Table of Contents
 
 1. [Installation](#1-installation)
