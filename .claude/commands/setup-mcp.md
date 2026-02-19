@@ -130,7 +130,7 @@ Run a quick end-to-end test to confirm the full pipeline works before configurin
 
 ## Step 5: Configure MCP Clients
 
-Configure both Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`) if applicable.
+Configure both Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`) if applicable, and install the CodeKG skill globally.
 
 ### 5a: Claude Code (.mcp.json)
 
@@ -197,6 +197,49 @@ Claude Desktop does not have Poetry on its PATH, so use the absolute path to the
 
 7. Show the user the final `codekg` block that was written.
 
+### 5c: Install the CodeKG Skill (Global)
+
+The CodeKG skill provides Claude with expert knowledge about CodeKG installation and usage. It lives in the `code_kg` repo and must be copied to `~/.claude/skills/` so the `skills-copilot` MCP server can serve it globally across all projects.
+
+1. Locate the skill source in the `code_kg` repo. The repo is at the path where `code-kg` was installed from — find it:
+   ```bash
+   poetry run python -c "import code_kg; import pathlib; print(pathlib.Path(code_kg.__file__).parent.parent.parent)"
+   ```
+   This prints the repo root (e.g. `/Users/you/repos/code_kg` or the pip cache path).
+
+   Alternatively, if the user cloned the repo, ask:
+   > "Where is the code_kg repository cloned? (e.g. /Users/you/repos/code_kg)"
+
+2. Check if the skill source exists:
+   ```bash
+   ls "<CODE_KG_REPO>/.claude/skills/codekg/SKILL.md" 2>/dev/null && echo "SKILL_SOURCE_OK" || echo "SKILL_SOURCE_MISSING"
+   ```
+
+3. Check if the skill is already installed globally:
+   ```bash
+   ls ~/.claude/skills/codekg/SKILL.md 2>/dev/null && echo "ALREADY_INSTALLED" || echo "NOT_INSTALLED"
+   ```
+
+4. If `ALREADY_INSTALLED`, ask the user:
+   > "The codekg skill is already installed at `~/.claude/skills/codekg/`. Update it with the latest version from the repo?"
+   - **Yes**: proceed with copy (overwrites)
+   - **No**: skip to Step 6
+
+5. Copy the skill to the global skills directory:
+   ```bash
+   mkdir -p ~/.claude/skills/codekg/references
+   cp "<CODE_KG_REPO>/.claude/skills/codekg/SKILL.md" ~/.claude/skills/codekg/SKILL.md
+   cp "<CODE_KG_REPO>/.claude/skills/codekg/references/installation.md" ~/.claude/skills/codekg/references/installation.md
+   ```
+
+6. Verify:
+   ```bash
+   ls -lh ~/.claude/skills/codekg/SKILL.md
+   ls -lh ~/.claude/skills/codekg/references/installation.md
+   ```
+
+7. If `SKILL_SOURCE_MISSING` (e.g. installed from pip cache, not a local clone), skip this step and note in the final report that the skill must be installed manually by cloning the repo.
+
 ---
 
 ## Step 6: Final Report
@@ -210,6 +253,7 @@ Present a summary of everything that was done:
 ✓ Smoke test:           passed
 ✓ Claude Code config:   <REPO_ROOT>/.mcp.json
 ✓ Claude Desktop config: <CONFIG_PATH>
+✓ CodeKG skill:         ~/.claude/skills/codekg/  (installed/updated/skipped)
 
 Restart Claude Code / Claude Desktop to activate the codekg MCP server.
 
