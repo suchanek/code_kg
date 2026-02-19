@@ -1,0 +1,21 @@
+refactor: introduce layered OOP API and reorganize codebase
+
+Replace flat module structure with a clean three-layer architecture:
+- CodeGraph (graph.py): pure, cached AST extraction
+- GraphStore (store.py): SQLite persistence, replaces codekg_sqlite.py
+- SemanticIndex (index.py): pluggable LanceDB vector index, replaces codekg_lancedb.py
+- CodeKG (kg.py): top-level orchestrator with typed result types
+  (BuildStats, QueryResult, Snippet, SnippetPack)
+
+Update __init__.py to expose the full public API at the package level
+while preserving the locked v0 Node/Edge primitive contract.
+
+Add comprehensive tests for each new layer (test_graph.py,
+test_store.py, test_kg.py) and rename test_codekg_v0.py to
+test_primitives.py to reflect its scope.
+
+Add Architecture.md and rewrite README with full project documentation.
+Add Claude agent configs (.claude/agents/) and command definitions
+(.claude/commands/) to support AI-assisted development workflows.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
