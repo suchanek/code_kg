@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/Users/egs/repos/code_kg",
+        "--db",      "/Users/egs/repos/code_kg/codekg.sqlite",
+        "--lancedb", "/Users/egs/repos/code_kg/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
