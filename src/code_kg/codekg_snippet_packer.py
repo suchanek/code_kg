@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-codekg_snippet_packer_v0.py
+codekg_snippet_packer.py
 
-Hybrid retrieval + snippet packing for the Code Knowledge Graph (v0).
+Hybrid retrieval + snippet packing for the Code Knowledge Graph.
 
 Pipeline:
   query -> LanceDB vector search -> seed node ids

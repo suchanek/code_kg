@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from codekg_lancedb_v0 import SentenceTransformerEmbedder, rebuild_lancedb_index
+from code_kg.codekg_lancedb import SentenceTransformerEmbedder, rebuild_lancedb_index
 
 
 def main() -> None:

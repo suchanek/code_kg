@@ -12,9 +12,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from codekg_sqlite_v0 import connect_sqlite, write_graph
-
-from codekg_v0 import extract_repo
+from code_kg.codekg import extract_repo
+from code_kg.codekg_sqlite import connect_sqlite, write_graph
 
 
 def main() -> None:

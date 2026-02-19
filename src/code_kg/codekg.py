@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-codekg_v0.py
+codekg.py
 
-Foundational v0 code knowledge graph extractor.
+Foundational code knowledge graph extractor.
 
 Pure, deterministic AST pass:
     repo -> nodes, edges
