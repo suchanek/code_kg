@@ -268,3 +268,4 @@ sqlite3 codekg.sqlite "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
 | MCP server not in Claude Desktop | Wrong binary path | `poetry env info --path` for absolute path |
 | Cline shows all repos pointing to same path | Global config used | Use unique entry name per repo (e.g. `codekg-myproject`) |
 | `poetry run which codekg-mcp` empty | `mcp` extra not installed | `poetry add "code-kg[mcp]"` |
+| `Command not found: codekg-mcp` in VS Code MCP log | VS Code extension host doesn't inherit shell PATH; bare `"poetry"` not found | Use absolute path: `"command": "/Users/you/.local/bin/poetry"` (get it with `which poetry`) |

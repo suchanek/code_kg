@@ -64,9 +64,12 @@ LOCAL_SKILL="${REPO_ROOT:+${REPO_ROOT}/.claude/skills/codekg/SKILL.md}"
 # The target repo is where the user ran the script from (CWD).
 TARGET_REPO="${PWD}"
 SQLITE_DB="${TARGET_REPO}/codekg.sqlite"
-LANCEDB_DIR="${TARGET_REPO}/lancedb"
-# Also check for codekg_lancedb (alternate naming convention)
-if [ -d "${TARGET_REPO}/codekg_lancedb" ] && [ ! -d "${LANCEDB_DIR}" ]; then
+# Prefer codekg_lancedb; fall back to lancedb for older installs
+if [ -d "${TARGET_REPO}/codekg_lancedb" ]; then
+    LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
+elif [ -d "${TARGET_REPO}/lancedb" ]; then
+    LANCEDB_DIR="${TARGET_REPO}/lancedb"
+else
     LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
 fi
 
@@ -153,6 +156,21 @@ fi
 echo ""
 echo "── Step 3: Checking code-kg installation ────────────"
 echo ""
+
+# Resolve absolute path to poetry — VS Code extension host doesn't inherit the
+# user's shell PATH, so check common install locations explicitly.
+_discover_poetry() {
+    command -v poetry 2>/dev/null && return
+    for _p in \
+        "${HOME}/.local/bin/poetry" \
+        "${HOME}/.poetry/bin/poetry" \
+        "${HOME}/.pyenv/shims/poetry" \
+        "/usr/local/bin/poetry" \
+        "/opt/homebrew/bin/poetry"; do
+        [ -x "$_p" ] && echo "$_p" && return
+    done
+}
+POETRY_BIN="$(_discover_poetry || true)"
 
 CODEKG_BIN=""
 if [ -x "${TARGET_REPO}/.venv/bin/codekg-mcp" ]; then
@@ -241,27 +259,21 @@ echo ""
 
 MCP_JSON="${TARGET_REPO}/.mcp.json"
 
-CODEKG_ENTRY=$(cat <<EOF
-    "codekg": {
-      "command": "poetry",
-      "args": [
-        "run", "codekg-mcp",
-        "--repo",    "${TARGET_REPO}",
-        "--db",      "${SQLITE_DB}",
-        "--lancedb", "${LANCEDB_DIR}"
-      ],
-      "env": {
-        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
-      }
-    }
-EOF
-)
-
 if [ ! -f "$MCP_JSON" ]; then
     cat > "$MCP_JSON" <<EOF
 {
   "mcpServers": {
-${CODEKG_ENTRY}
+    "codekg": {
+      "command": "${CODEKG_BIN}",
+      "args": [
+        "--repo",
+        "${TARGET_REPO}",
+        "--db",
+        "${SQLITE_DB}",
+        "--lancedb",
+        "${LANCEDB_DIR}"
+      ]
+    }
   }
 }
 EOF
@@ -269,23 +281,20 @@ EOF
 elif grep -q '"codekg"' "$MCP_JSON"; then
     echo "  ✓ codekg entry already present in ${MCP_JSON} — skipping"
 else
-    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" <<'PYEOF'
+    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$CODEKG_BIN" <<'PYEOF'
 import json, sys
 mcp_json_path = sys.argv[1]
 target_repo   = sys.argv[2]
 sqlite_db     = sys.argv[3]
 lancedb_dir   = sys.argv[4]
+codekg_bin    = sys.argv[5]
 with open(mcp_json_path, "r") as f:
     data = json.load(f)
 if "mcpServers" not in data:
     data["mcpServers"] = {}
 data["mcpServers"]["codekg"] = {
-    "command": "poetry",
-    "args": ["run", "codekg-mcp",
-             "--repo",    target_repo,
-             "--db",      sqlite_db,
-             "--lancedb", lancedb_dir],
-    "env": {"POETRY_VIRTUALENVS_IN_PROJECT": "false"}
+    "command": codekg_bin,
+    "args": ["--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
 }
 with open(mcp_json_path, "w") as f:
     json.dump(data, f, indent=2)
@@ -309,16 +318,15 @@ if [ ! -f "$VSCODE_MCP" ]; then
   "servers": {
     "codekg": {
       "type": "stdio",
-      "command": "poetry",
+      "command": "${CODEKG_BIN}",
       "args": [
-        "run", "codekg-mcp",
-        "--repo",    "${TARGET_REPO}",
-        "--db",      "${SQLITE_DB}",
-        "--lancedb", "${LANCEDB_DIR}"
-      ],
-      "env": {
-        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
-      }
+        "--repo",
+        "${TARGET_REPO}",
+        "--db",
+        "${SQLITE_DB}",
+        "--lancedb",
+        "${LANCEDB_DIR}"
+      ]
     }
   }
 }
@@ -327,24 +335,21 @@ EOF
 elif grep -q '"codekg"' "$VSCODE_MCP"; then
     echo "  ✓ codekg entry already present in ${VSCODE_MCP} — skipping"
 else
-    python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" <<'PYEOF'
+    python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$CODEKG_BIN" <<'PYEOF'
 import json, sys
 vscode_mcp  = sys.argv[1]
 target_repo = sys.argv[2]
 sqlite_db   = sys.argv[3]
 lancedb_dir = sys.argv[4]
+codekg_bin  = sys.argv[5]
 with open(vscode_mcp, "r") as f:
     data = json.load(f)
 if "servers" not in data:
     data["servers"] = {}
 data["servers"]["codekg"] = {
     "type": "stdio",
-    "command": "poetry",
-    "args": ["run", "codekg-mcp",
-             "--repo",    target_repo,
-             "--db",      sqlite_db,
-             "--lancedb", lancedb_dir],
-    "env": {"POETRY_VIRTUALENVS_IN_PROJECT": "false"}
+    "command": codekg_bin,
+    "args": ["--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
 }
 with open(vscode_mcp, "w") as f:
     json.dump(data, f, indent=2)
