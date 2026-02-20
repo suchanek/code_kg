@@ -20,8 +20,9 @@
 #   1. Creates skill directories for Claude Code, Kilo Code, and other agents
 #   2. Downloads SKILL.md and references/installation.md from GitHub
 #      (or copies from local repo if running from within the clone)
-#   3. Injects the codekg MCP server entry into .mcp.json in TARGET_REPO
-#   4. Prints next steps
+#   3. Installs .claude/commands/codekg.md into TARGET_REPO (Cline /codekg slash command)
+#   4. Injects the codekg MCP server entry into .mcp.json in TARGET_REPO
+#   5. Prints next steps
 # =============================================================================
 
 set -eo pipefail
@@ -102,6 +103,33 @@ for SKILL_DIR in "${SKILL_DIRS[@]}"; do
     echo "  ✓ ${SKILL_DIR}/SKILL.md"
     echo "  ✓ ${REFS_DIR}/installation.md"
 done
+
+# ── Install Cline slash command into the target repo ─────────────────────────
+echo ""
+echo "→ Installing Cline slash command in: ${TARGET_REPO}/.claude/commands/codekg.md"
+
+CLINE_CMD_DIR="${TARGET_REPO}/.claude/commands"
+CLINE_CMD_FILE="${CLINE_CMD_DIR}/codekg.md"
+LOCAL_CMD="${REPO_ROOT:+${REPO_ROOT}/.claude/commands/codekg.md}"
+
+mkdir -p "$CLINE_CMD_DIR"
+
+if [ -f "$CLINE_CMD_FILE" ]; then
+    echo "  ✓ ${CLINE_CMD_FILE} already exists — skipping"
+elif [ -n "$LOCAL_CMD" ] && [ -f "$LOCAL_CMD" ]; then
+    cp "$LOCAL_CMD" "$CLINE_CMD_FILE"
+    echo "  ✓ Copied from local repo → ${CLINE_CMD_FILE}"
+else
+    # Download from GitHub
+    if command -v curl &>/dev/null; then
+        curl -fsSL "${RAW_BASE}/.claude/commands/codekg.md" -o "$CLINE_CMD_FILE"
+    elif command -v wget &>/dev/null; then
+        wget -q "${RAW_BASE}/.claude/commands/codekg.md" -O "$CLINE_CMD_FILE"
+    else
+        echo "  ⚠ Neither curl nor wget found — skipping Cline command install"
+    fi
+    [ -f "$CLINE_CMD_FILE" ] && echo "  ✓ Downloaded → ${CLINE_CMD_FILE}"
+fi
 
 # ── Inject codekg into .mcp.json in the target repo ──────────────────────────
 echo ""
@@ -199,7 +227,7 @@ fi
 echo ""
 echo "══════════════════════════════════════════════════"
 echo "  CodeKG skill installed successfully!"
-echo "  Works in: Claude Code and Kilo Code (VS Code)"
+echo "  Works in: Claude Code, Kilo Code, and Cline"
 echo "══════════════════════════════════════════════════"
 echo ""
 echo "Next steps:"
@@ -221,9 +249,11 @@ echo "     Kilo Code / Claude Code (per-repo, recommended):"
 echo "       .mcp.json was updated above (or create it with the codekg entry)"
 echo "       Run /setup-mcp inside Kilo Code for automated setup"
 echo ""
-echo "     Cline (global config only):"
-echo "       Edit: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
-echo "       Add a named entry: codekg-REPONAME (unique per repo)"
+echo "     Cline:"
+echo "       Slash command: /codekg is now available in this repo (installed above)"
+echo "       MCP server (global config only):"
+echo "         Edit: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+echo "         Add a named entry: codekg-REPONAME (unique per repo)"
 echo ""
 echo "  4. Reload your AI agent / MCP servers to pick up the new config."
 echo ""

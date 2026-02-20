@@ -33,6 +33,7 @@ This project uses [Claude Copilot](https://github.com/Everyone-Needs-A-Copilot/c
 | **Agents** | 11 specialists via `/protocol` | Expert guidance routed by task type |
 | **Knowledge** | `knowledge_search`, `knowledge_get` | Search company/product documentation |
 | **Skills** | `skill_search`, `skill_get` | Load expertise on demand |
+| **CodeKG** | `graph_stats`, `query_codebase`, `pack_snippets`, `get_node` | Source-grounded codebase exploration via MCP |
 
 ### Agents
 

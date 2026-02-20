@@ -7,6 +7,7 @@
 \usepackage{titlesec}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{booktabs}
 
 \setstretch{1.15}
 
@@ -23,8 +24,7 @@
 }
 
 \title{
-CodeKG v0:\\
-A Deterministic Knowledge Graph for Python Codebases\\
+CodeKG: A Deterministic Knowledge Graph for Python Codebases\\
 with Semantic Indexing and Source-Grounded Snippet Packing
 }
 
@@ -36,174 +36,334 @@ with Semantic Indexing and Source-Grounded Snippet Packing
 \maketitle
 
 \begin{abstract}
-CodeKG is a system for constructing a deterministic, explainable knowledge graph from a Python codebase using static analysis. The graph captures structural relationships---definitions, calls, imports, and inheritance---directly from the Python abstract syntax tree (AST), stores them in a relational database (SQLite), and augments retrieval with semantic vector indexing (LanceDB).
+CodeKG constructs a deterministic, auditable knowledge graph from a Python codebase
+using static analysis. Structural relationships---definitions, calls, imports, and
+inheritance---are extracted directly from the Python abstract syntax tree and stored
+in SQLite. A vector index over the same nodes, built with sentence-transformer
+embeddings and stored in LanceDB, provides semantic retrieval without replacing or
+overriding the structural record.
 
-The system is implemented as four composable, independently testable layers: a pure AST extractor (\texttt{CodeGraph}), a relational graph store (\texttt{GraphStore}), a semantic vector index (\texttt{SemanticIndex}), and a top-level orchestrator (\texttt{CodeKG}) that coordinates the full pipeline and exposes structured result types.
+The system is organized into four composable layers: a pure AST extractor
+(\texttt{CodeGraph}), a relational graph store (\texttt{GraphStore}), a semantic
+vector index (\texttt{SemanticIndex}), and an orchestrator (\texttt{CodeKG}) that
+coordinates the full pipeline and exposes structured result types. A built-in MCP
+server makes all query and snippet-packing capabilities available as tools to any
+MCP-compatible AI agent.
 
-Unlike large-language-model--centric approaches, CodeKG treats program structure as ground truth and uses semantic embeddings strictly as an acceleration layer. The result is a searchable, auditable representation of a codebase that supports precise navigation, contextual snippet extraction, and downstream reasoning without hallucination.
+The design treats program structure as ground truth and uses semantic embeddings
+strictly as an acceleration layer. The result is a searchable, traceable
+representation of a codebase that supports precise navigation, contextual snippet
+extraction, and downstream reasoning without hallucination.
 \end{abstract}
 
 \section{Introduction}
 
-As Python systems scale, answering even basic architectural questions becomes increasingly difficult. Developers often struggle to determine where configuration is defined, how runtime behavior is composed, or where specific services are invoked. Traditional tools such as text search, IDE symbol lookup, and static documentation provide limited support for such higher-level reasoning.
+As Python systems grow, answering basic architectural questions becomes surprisingly
+hard. Where is this configuration value actually set? Which functions participate in
+the connection lifecycle? Where is this service called, and under what conditions?
+Text search finds strings; IDE symbol lookup finds definitions. Neither tells you
+much about the shape of the system.
 
-Recent advances in large language models offer semantic intuition but lack grounding in the source tree, leading to brittle or unverifiable conclusions. CodeKG addresses this gap by constructing a first-principles representation of code structure and layering semantic retrieval on top, without sacrificing determinism or provenance.
+Large language models offer a different kind of help---they can reason about code
+semantically---but they are not grounded in the source tree. They hallucinate
+function signatures, invent call relationships, and confidently describe code that
+does not exist. The problem is not intelligence; it is the absence of a reliable
+structural substrate.
+
+CodeKG addresses this by building that substrate first. The Python AST is parsed
+deterministically, producing a graph of nodes (modules, classes, functions, methods)
+and typed edges (CONTAINS, CALLS, IMPORTS, INHERITS). That graph is stored in
+SQLite, which is the authoritative record. Semantic embeddings are then built on top
+of it---not instead of it---so that natural-language queries can find relevant
+entry points without inventing structure that is not there.
 
 \section{Design Principles}
 
-CodeKG v0 is guided by five core principles:
+Five principles govern the design:
 
 \begin{enumerate}
 \item \textbf{Structure is authoritative.}
-The AST-derived graph is the source of truth.
+The AST-derived graph is the source of truth. Embeddings are derived from it and
+can be discarded and rebuilt at any time without loss.
 
 \item \textbf{Semantics accelerate, never decide.}
-Vector embeddings are used for ranking and seeding retrieval but do not invent structure.
+Vector search identifies candidate entry points. Graph traversal determines what
+is actually returned. The two phases are explicit and separable.
 
 \item \textbf{Everything is traceable.}
-All nodes and edges map to concrete files and line numbers.
+Every node carries a file path and line span. Every edge may carry evidence---a
+line number and expression text from the call site. Nothing is inferred without
+a source location.
 
 \item \textbf{Determinism over heuristics.}
-Identical input yields identical output.
+Identical input produces identical output. There are no probabilistic components
+in the structural layer.
 
 \item \textbf{Composable artifacts.}
-Relational storage, vector indexing, and human-readable outputs are cleanly separated.
+SQLite, LanceDB, Markdown, and JSON are independent outputs. Any downstream
+consumer---a human, an agent, a CI pipeline---can use whichever format suits it.
 \end{enumerate}
 
-\section{Layered Class Architecture}
+\section{Architecture}
 
-The implementation is organized into four focused layers. Each layer has a single responsibility, is independently testable, and depends only on layers below it.
+The implementation is organized into four layers. Each has a single responsibility
+and depends only on layers below it.
 
 \subsection{Layer 1 --- Primitives (\texttt{codekg.py})}
 
-The locked v0 contract. Pure, deterministic, side-effect free. This module is never modified.
+Two frozen dataclasses and one extraction function form the foundation.
 
-\begin{itemize}
-\item \textbf{\texttt{Node}} --- frozen dataclass carrying \texttt{id}, \texttt{kind}, \texttt{name}, \texttt{qualname}, \texttt{module\_path}, \texttt{lineno}, \texttt{end\_lineno}, and \texttt{docstring}.
-\item \textbf{\texttt{Edge}} --- frozen dataclass carrying \texttt{src}, \texttt{rel}, \texttt{dst}, and optional \texttt{evidence}.
-\item \textbf{\texttt{extract\_repo(repo\_root)}} --- walks all \texttt{.py} files, runs two AST passes (definitions then call graph), and returns \texttt{(nodes, edges)}.
-\end{itemize}
+\textbf{\texttt{Node}} carries: \texttt{id} (stable, deterministic), \texttt{kind},
+\texttt{name}, \texttt{qualname}, \texttt{module\_path}, \texttt{lineno},
+\texttt{end\_lineno}, and \texttt{docstring}.
 
-Supported node kinds: \texttt{module}, \texttt{class}, \texttt{function}, \texttt{method}, \texttt{symbol}.
-Edge relations: \texttt{CONTAINS}, \texttt{CALLS}, \texttt{IMPORTS}, \texttt{INHERITS}.
+\textbf{\texttt{Edge}} carries: \texttt{src}, \texttt{rel}, \texttt{dst}, and
+optional \texttt{evidence} (a JSON object, typically \texttt{\{lineno, expr\}}).
+
+\textbf{\texttt{extract\_repo(repo\_root)}} walks all \texttt{.py} files and runs
+two deterministic AST passes. Pass~1 extracts definitions and emits
+\texttt{CONTAINS}, \texttt{IMPORTS}, and \texttt{INHERITS} edges. Pass~2 extracts
+the call graph, emitting \texttt{CALLS} edges with call-site evidence. Unresolved
+call targets become \texttt{sym:} symbol nodes.
+
+Supported node kinds: \texttt{module}, \texttt{class}, \texttt{function},
+\texttt{method}, \texttt{symbol}.
+Edge relations: \texttt{CONTAINS}, \texttt{CALLS}, \texttt{IMPORTS},
+\texttt{INHERITS}.
 
 \subsection{Layer 2 --- \texttt{CodeGraph} (\texttt{graph.py})}
 
-Pure AST extraction with a clean object interface. No I/O, no persistence, no embeddings.
-
-\texttt{CodeGraph} wraps \texttt{extract\_repo} with lazy caching: the \texttt{.nodes} and \texttt{.edges} properties trigger extraction on first access. Calling \texttt{extract(force=True)} re-runs from scratch. The \texttt{stats()} method returns node and edge counts by kind.
+\texttt{CodeGraph} wraps \texttt{extract\_repo} with lazy caching. The
+\texttt{.nodes} and \texttt{.edges} properties trigger extraction on first access;
+\texttt{extract(force=True)} re-runs from scratch. No I/O, no persistence, no
+embeddings---pure AST extraction with a clean object interface.
 
 \subsection{Layer 3 --- \texttt{GraphStore} (\texttt{store.py})}
 
-SQLite-backed authoritative store. No embeddings, no AST.
-
-\texttt{GraphStore} manages the \texttt{nodes} and \texttt{edges} tables and provides the graph traversal primitives used by the query layer. Key methods include:
+\texttt{GraphStore} manages the SQLite \texttt{nodes} and \texttt{edges} tables and
+provides the traversal primitives used by the query layer.
 
 \begin{itemize}
-\item \texttt{write(nodes, edges, wipe=False)} --- persist a complete graph via upsert.
+\item \texttt{write(nodes, edges, wipe=False)} --- persist a complete graph via
+upsert.
 \item \texttt{node(id)} --- fetch a single node dict by stable identifier.
 \item \texttt{query\_nodes(kinds=, module=)} --- filtered node list.
-\item \texttt{edges\_within(node\_ids)} --- edges with both endpoints in the given set.
-\item \texttt{expand(seed\_ids, hop=1, rels=\ldots)} --- BFS expansion returning \texttt{Dict[str, ProvMeta]}.
+\item \texttt{edges\_within(node\_ids)} --- edges with both endpoints in the given
+set.
+\item \texttt{expand(seed\_ids, hop=1, rels=\ldots)} --- BFS expansion returning
+\texttt{Dict[str, ProvMeta]}.
 \item \texttt{stats()} --- node and edge counts by kind and relation.
 \end{itemize}
 
-The \texttt{ProvMeta} object returned by \texttt{expand()} records \texttt{best\_hop} (minimum hop distance from any seed) and \texttt{via\_seed} (the originating seed node).
+\texttt{ProvMeta} records \texttt{best\_hop} (minimum hop distance from any seed)
+and \texttt{via\_seed} (the originating seed node ID). This provenance is used
+downstream for ranking.
 
 \subsection{Layer 4 --- \texttt{SemanticIndex} (\texttt{index.py})}
 
-LanceDB-backed vector index. Derived from SQLite; disposable and rebuildable at any time.
+\texttt{SemanticIndex} reads nodes from a \texttt{GraphStore}, constructs a
+canonical text document for each (name plus docstring), embeds them in batches
+using a pluggable \texttt{Embedder} backend, and stores the vectors in LanceDB.
+The \texttt{search(query, k)} method returns a ranked list of \texttt{SeedHit}
+objects carrying node ID, embedding distance, and rank.
 
-\texttt{SemanticIndex} reads nodes from a \texttt{GraphStore}, constructs canonical embedding text from names and docstrings, embeds them using a pluggable \texttt{Embedder} backend, and stores the vectors in LanceDB. The \texttt{search(query, k)} method returns a list of \texttt{SeedHit} objects carrying node id, distance, and rank.
+The \texttt{Embedder} abstract class defines \texttt{embed\_texts(texts)} and
+\texttt{embed\_query(query)}. The default implementation,
+\texttt{SentenceTransformerEmbedder}, uses \texttt{all-MiniLM-L6-v2} from the
+\texttt{sentence-transformers} library (384-dimensional embeddings).
 
-The \texttt{Embedder} abstract class defines \texttt{embed\_texts(texts)} and \texttt{embed\_query(query)}. The default implementation, \texttt{SentenceTransformerEmbedder}, uses the \texttt{all-MiniLM-L6-v2} model from the \texttt{sentence-transformers} library.
+The vector index is derived from SQLite and is fully disposable. Deleting and
+rebuilding it does not affect the structural record.
 
-\section{Orchestrator --- \texttt{CodeKG} (\texttt{kg.py})}
+\subsection{Orchestrator --- \texttt{CodeKG} (\texttt{kg.py})}
 
-\texttt{CodeKG} is the top-level entry point. It owns all four layers with lazy initialization and exposes a unified API:
+\texttt{CodeKG} owns all four layers with lazy initialization and exposes the
+primary user-facing API:
 
 \begin{itemize}
-\item \texttt{build(wipe=False)} --- full pipeline: AST extraction, SQLite persistence, LanceDB indexing.
-\item \texttt{build\_graph(wipe=False)} --- AST extraction and SQLite persistence only.
-\item \texttt{build\_index(wipe=False)} --- LanceDB indexing only (graph must already exist).
-\item \texttt{query(q, k=8, hop=1, \ldots)} --- hybrid query returning a \texttt{QueryResult}.
-\item \texttt{pack(q, k=8, hop=1, \ldots)} --- hybrid query with snippet extraction returning a \texttt{SnippetPack}.
-\item \texttt{stats()} --- delegate to \texttt{GraphStore.stats()}.
-\item \texttt{node(id)} --- fetch a single node from the store.
+\item \texttt{build(wipe=False)} --- full pipeline: AST extraction, SQLite
+persistence, LanceDB indexing.
+\item \texttt{build\_graph(wipe=False)} --- AST extraction and SQLite only.
+\item \texttt{build\_index(wipe=False)} --- LanceDB indexing only (graph must
+already exist).
+\item \texttt{query(q, k=8, hop=1, \ldots)} --- hybrid query returning a
+\texttt{QueryResult}.
+\item \texttt{pack(q, k=8, hop=1, \ldots)} --- hybrid query with snippet extraction
+returning a \texttt{SnippetPack}.
+\item \texttt{stats()} --- node and edge counts from the store.
+\item \texttt{node(id)} --- fetch a single node by ID.
 \end{itemize}
 
-Layer properties (\texttt{graph}, \texttt{store}, \texttt{embedder}, \texttt{index}) are lazy: the embedding model and LanceDB connection are only instantiated when first needed. \texttt{CodeKG} supports the context manager protocol.
+Layer properties (\texttt{graph}, \texttt{store}, \texttt{embedder}, \texttt{index})
+are lazy: the embedding model and LanceDB connection are only instantiated when
+first needed. \texttt{CodeKG} supports the context manager protocol for clean
+resource management.
 
 \section{Core Data Model}
 
 \subsection{Nodes}
 
-Nodes represent concrete program elements extracted from the source tree. Each node stores a stable deterministic identifier, kind, name, qualified name, module path, source line span, and optional docstring. Nodes are stored in SQLite, which is canonical.
+Each node represents a concrete program element extracted from the source tree.
+The stable identifier is constructed deterministically from kind, module path, and
+qualified name---for example, \texttt{fn:src/code\_kg/store.py:GraphStore.expand}.
+This means node IDs are stable across rebuilds as long as the source structure
+does not change.
 
 \subsection{Edges}
 
-Edges encode structural relationships between nodes. Each edge may carry evidence---typically a JSON object containing a source line number and expression text---enabling call-site extraction and precise auditability.
+Edges encode typed structural relationships. \texttt{CALLS} edges carry evidence:
+a JSON object with the call-site line number and expression text. This makes it
+possible to extract not just that function A calls function B, but exactly where
+and in what syntactic context.
 
 \section{Build Pipeline}
 
-\subsection{Static Analysis Phase}
+\subsection{Static Analysis}
 
-\texttt{CodeGraph.extract()} invokes \texttt{extract\_repo()}, which performs two deterministic AST passes over all \texttt{.py} files in the repository. Pass~1 extracts module, class, function, method, and import nodes along with \texttt{CONTAINS}, \texttt{IMPORTS}, and \texttt{INHERITS} edges. Pass~2 extracts the call graph, emitting \texttt{CALLS} edges with evidence. Unresolved call targets become \texttt{sym:} symbol nodes.
+\texttt{CodeGraph.extract()} invokes \texttt{extract\_repo()}, which performs two
+deterministic AST passes over all \texttt{.py} files. Pass~1 extracts the
+definition graph. Pass~2 extracts the call graph with evidence. The resulting
+nodes and edges are persisted to SQLite via \texttt{GraphStore.write()}. This
+phase uses no embeddings and no language models.
 
-The resulting nodes and edges are persisted to SQLite via \texttt{GraphStore.write()}. This phase uses no embeddings and no language models.
+\subsection{Semantic Indexing}
 
-\subsection{Semantic Indexing Phase}
+\texttt{SemanticIndex.build(store)} reads \texttt{module}, \texttt{class},
+\texttt{function}, and \texttt{method} nodes from SQLite, constructs a canonical
+text document for each, embeds them in configurable batches, and upserts the
+vectors into LanceDB. Symbol nodes are excluded from the index by default.
 
-\texttt{SemanticIndex.build(store)} reads \texttt{module}, \texttt{class}, \texttt{function}, and \texttt{method} nodes from SQLite, constructs a canonical text document for each, embeds them in batches, and upserts the vectors into LanceDB. The vector index is derived and disposable; SQLite remains authoritative.
+Both phases are idempotent. The \texttt{--wipe} flag clears existing data before
+writing; omitting it performs an upsert.
 
 \section{Hybrid Query Model}
 
-Queries execute in two explicit phases.
+Queries execute in two explicit, separable phases.
 
-\textbf{Semantic seeding.} The query string is embedded and used to retrieve a ranked list of \texttt{SeedHit} objects from the LanceDB index. These nodes serve as conceptual entry points.
+\textbf{Semantic seeding.} The query string is embedded and used to retrieve a
+ranked list of \texttt{SeedHit} objects from LanceDB. These nodes serve as
+conceptual entry points into the graph---the places where the query's meaning
+most closely matches the codebase's vocabulary.
 
-\textbf{Structural expansion.} \texttt{GraphStore.expand()} performs BFS from the seed node IDs, following selected edge types up to a configurable hop limit. Each reachable node is annotated with its minimum hop distance and originating seed via \texttt{ProvMeta}.
+\textbf{Structural expansion.} \texttt{GraphStore.expand()} performs BFS from the
+seed node IDs, following selected edge types up to a configurable hop limit. Each
+reachable node is annotated with its minimum hop distance and originating seed via
+\texttt{ProvMeta}. The expansion is bounded and deterministic.
+
+The two phases are independent. Changing the embedding model affects which seeds
+are selected; changing the hop count or edge filter affects how far the graph is
+traversed from those seeds. Both can be tuned independently.
 
 \section{Ranking and Deduplication}
 
-Retrieved nodes are ranked deterministically by a composite key: hop distance, seed embedding distance, node kind priority (functions and methods before classes before modules before symbols), and node identifier for tie-breaking.
+Retrieved nodes are ranked by a composite key: hop distance from seed, seed
+embedding distance, node kind priority (functions and methods before classes before
+modules before symbols), and node ID for tie-breaking. The ranking is fully
+deterministic given fixed inputs.
 
-In \texttt{pack()}, nodes are additionally deduplicated by file and source span. Nodes whose computed span overlaps an already-retained span in the same file are discarded. A configurable cap limits the total number of returned nodes.
+In \texttt{pack()}, nodes are additionally deduplicated by file and source span.
+A node whose computed span overlaps an already-retained span in the same file is
+discarded. A configurable cap (\texttt{max\_nodes}) limits the total result set.
+This prevents large modules from dominating the output when many nodes from the
+same file are retrieved.
 
 \section{Snippet Packing}
 
-For retained nodes, \texttt{CodeKG.pack()} extracts source-grounded snippets using the recorded \texttt{module\_path}, \texttt{lineno}, and \texttt{end\_lineno}. Bounded context windows are applied around each definition span. File reads are cached per query. All path resolution is performed through a path-traversal-safe join function.
+For retained nodes, \texttt{CodeKG.pack()} extracts source-grounded snippets using
+the recorded \texttt{module\_path}, \texttt{lineno}, and \texttt{end\_lineno}.
+A configurable context window (\texttt{context} lines, default 5) is added around
+each definition span. A per-snippet line cap (\texttt{max\_lines}, default 160)
+prevents very large definitions from overwhelming the output. File reads are cached
+per query. All path resolution goes through a path-traversal-safe join that rejects
+any path escaping the repository root.
 
-The resulting \texttt{SnippetPack} object provides \texttt{to\_markdown()}, \texttt{to\_json()}, and \texttt{save(path, fmt)} methods, making it suitable for human review, agent pipelines, or language-model ingestion with grounding.
+The resulting \texttt{SnippetPack} provides \texttt{to\_markdown()},
+\texttt{to\_json()}, and \texttt{save(path, fmt)} methods. The Markdown output
+includes line numbers, making it suitable for direct ingestion by language models
+or agents that need to reason about specific source locations.
 
 \section{Result Types}
 
 Three structured result types are defined in \texttt{kg.py}:
 
 \begin{itemize}
-\item \textbf{\texttt{BuildStats}} --- returned by all build methods; carries node and edge counts, indexed row count, and embedding dimension.
-\item \textbf{\texttt{QueryResult}} --- returned by \texttt{query()}; carries the ranked node list, edges within the result set, and query metadata. Provides \texttt{to\_dict()}, \texttt{to\_json()}, and \texttt{print\_summary()}.
-\item \textbf{\texttt{SnippetPack}} --- returned by \texttt{pack()}; extends \texttt{QueryResult} with source snippets attached to each node. Provides \texttt{to\_markdown()}, \texttt{to\_json()}, and \texttt{save()}.
+\item \textbf{\texttt{BuildStats}} --- returned by all build methods; carries node
+and edge counts, indexed row count, and embedding dimension.
+\item \textbf{\texttt{QueryResult}} --- returned by \texttt{query()}; carries the
+ranked node list, edges within the result set, and query metadata. Provides
+\texttt{to\_dict()}, \texttt{to\_json()}, and \texttt{print\_summary()}.
+\item \textbf{\texttt{SnippetPack}} --- returned by \texttt{pack()}; extends the
+query result with source snippets attached to each node. Provides
+\texttt{to\_markdown()}, \texttt{to\_json()}, and \texttt{save()}.
 \end{itemize}
+
+\section{MCP Server}
+
+\texttt{mcp\_server.py} wraps \texttt{CodeKG} as a Model Context Protocol server,
+exposing four tools to any MCP-compatible AI agent:
+
+\begin{itemize}
+\item \texttt{graph\_stats()} --- node and edge counts by kind and relation.
+\item \texttt{query\_codebase(q, k, hop, rels, include\_symbols)} --- hybrid query
+returning JSON.
+\item \texttt{pack\_snippets(q, k, hop, rels, \ldots)} --- hybrid query with
+source-grounded snippets returning Markdown.
+\item \texttt{get\_node(node\_id)} --- single node metadata lookup by stable ID.
+\end{itemize}
+
+The server is started via the \texttt{codekg-mcp} CLI entry point and communicates
+over \texttt{stdio} (for Claude Code, Kilo Code, GitHub Copilot, and Claude
+Desktop) or \texttt{sse} (for HTTP clients). It is strictly read-only; no tool
+modifies the graph.
+
+\section{CLI Entry Points}
+
+Six CLI commands are registered as package entry points:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Command & Purpose \\
+\midrule
+\texttt{codekg-build-sqlite} & AST extraction $\to$ SQLite \\
+\texttt{codekg-build-lancedb} & SQLite $\to$ LanceDB vector index \\
+\texttt{codekg-query} & Hybrid query (JSON output) \\
+\texttt{codekg-pack} & Hybrid query + snippet pack (Markdown or JSON) \\
+\texttt{codekg-viz} & Launch the Streamlit graph explorer \\
+\texttt{codekg-mcp} & Start the MCP server \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \section{End-to-End Workflow}
 
-The overall workflow proceeds as follows:
-
 \begin{enumerate}
-\item \texttt{CodeGraph.extract()} --- pure AST pass over the repository.
+\item \texttt{CodeGraph.extract()} --- deterministic AST pass over the repository.
 \item \texttt{GraphStore.write()} --- persist nodes and edges to SQLite.
 \item \texttt{SemanticIndex.build()} --- embed nodes and store vectors in LanceDB.
-\item \texttt{SemanticIndex.search()} --- semantic seeding from a natural-language query.
-\item \texttt{GraphStore.expand()} --- structural expansion with provenance.
+\item \texttt{SemanticIndex.search()} --- semantic seeding from a natural-language
+query.
+\item \texttt{GraphStore.expand()} --- structural BFS expansion with provenance.
 \item Deterministic ranking and span-based deduplication.
 \item Snippet extraction and \texttt{SnippetPack} assembly.
 \end{enumerate}
 
-All steps are coordinated by \texttt{CodeKG}, which exposes \texttt{build()}, \texttt{query()}, and \texttt{pack()} as the primary user-facing API.
+Steps 1--3 are the build pipeline, run once (or on demand after code changes).
+Steps 4--7 execute on every query, typically in under a second for codebases up to
+several hundred thousand lines.
 
 \section{Conclusion}
 
-CodeKG demonstrates that explainable, scalable code understanding can be achieved by combining static analysis with semantic indexing while preserving determinism and traceability. The layered class architecture---\texttt{CodeGraph}, \texttt{GraphStore}, \texttt{SemanticIndex}, and \texttt{CodeKG}---cleanly separates concerns, enables independent testing of each layer, and makes the system straightforward to extend. By treating structure as ground truth and semantics as an assistive layer, CodeKG provides a robust foundation for navigating and reasoning over complex Python codebases.
+CodeKG shows that useful, auditable code understanding does not require a language
+model in the loop. Static analysis produces a precise structural record; semantic
+embeddings make that record navigable with natural language. Keeping the two layers
+explicit and separable means each can be evaluated, debugged, and improved
+independently.
+
+The layered architecture---\texttt{CodeGraph}, \texttt{GraphStore},
+\texttt{SemanticIndex}, \texttt{CodeKG}---cleanly separates concerns and makes the
+system straightforward to extend. The MCP server turns the query pipeline into a
+first-class tool for AI agents, giving them grounded, traceable access to codebase
+structure rather than asking them to reason from memory.
 
 \end{document}

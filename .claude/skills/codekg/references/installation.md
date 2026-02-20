@@ -53,6 +53,21 @@ poetry run codekg-query \
 
 ---
 
+## Agent Config Matrix
+
+| Agent | Config file | Key | Per-repo? |
+|---|---|---|---|
+| **Claude Code** | `.mcp.json` (project root) | `"mcpServers"` | ✅ Yes |
+| **Kilo Code** | `.mcp.json` (project root) | `"mcpServers"` | ✅ Yes |
+| **GitHub Copilot** | `.vscode/mcp.json` (workspace root) | `"servers"` | ✅ Yes |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | `"mcpServers"` | ❌ Global |
+| **Cline** | `~/...saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | `"mcpServers"` | ❌ Global only |
+
+> ⚠️ **Do NOT add `codekg` to any global settings file** (Kilo Code `mcp_settings.json`, Cline `cline_mcp_settings.json`).
+> Use per-repo config files instead. For Cline, use a uniquely-named entry per repo (e.g. `codekg-myproject`).
+
+---
+
 ## Full .mcp.json Templates
 
 ### Minimal (codekg only)
@@ -108,11 +123,40 @@ poetry run codekg-query \
         "--repo",    "/absolute/path/to/repo",
         "--db",      "/absolute/path/to/repo/codekg.sqlite",
         "--lancedb", "/absolute/path/to/repo/lancedb"
-      ]
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
     }
   }
 }
 ```
+
+### GitHub Copilot (.vscode/mcp.json)
+
+GitHub Copilot uses a different schema — `"servers"` key (not `"mcpServers"`) and requires `"type": "stdio"`:
+
+```json
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/repo/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/repo/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
+```
+
+VS Code will prompt you to **Trust** the server on first use.
 
 ### Claude Desktop (absolute venv path)
 
@@ -219,6 +263,8 @@ sqlite3 codekg.sqlite "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
 | Empty results from `query_codebase` | LanceDB stale or missing | `codekg-build-lancedb --wipe` |
 | `RuntimeError: CodeKG not initialised` | Server not started via CLI | Always use `codekg-mcp` CLI |
 | Snippets show wrong line numbers | Source changed since build | `codekg-build-sqlite --wipe` |
-| MCP server not in Claude Code | Relative paths or wrong location | Absolute paths in `.mcp.json`; restart |
+| MCP server not in Claude Code / Kilo Code | Relative paths or wrong location | Absolute paths in `.mcp.json`; restart |
+| MCP server not in GitHub Copilot | Missing `"type": "stdio"` or wrong key | Use `"servers"` key with `"type": "stdio"` in `.vscode/mcp.json`; click Trust |
 | MCP server not in Claude Desktop | Wrong binary path | `poetry env info --path` for absolute path |
+| Cline shows all repos pointing to same path | Global config used | Use unique entry name per repo (e.g. `codekg-myproject`) |
 | `poetry run which codekg-mcp` empty | `mcp` extra not installed | `poetry add "code-kg[mcp]"` |

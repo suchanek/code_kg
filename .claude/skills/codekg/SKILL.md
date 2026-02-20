@@ -1,6 +1,6 @@
 ---
 name: codekg
-description: Expert knowledge for installing, configuring, and using the CodeKG MCP server — a hybrid semantic + structural knowledge graph for Python codebases. Use this skill when the user asks about: setting up CodeKG in a project, adding code-kg as a Poetry dependency, building the SQLite or LanceDB knowledge graph, configuring .mcp.json for Claude Code, configuring claude_desktop_config.json for Claude Desktop, using the codekg-mcp CLI, running codekg-build-sqlite or codekg-build-lancedb, using the graph_stats / query_codebase / pack_snippets / get_node MCP tools, or troubleshooting CodeKG errors.
+description: Expert knowledge for installing, configuring, and using the CodeKG MCP server — a hybrid semantic + structural knowledge graph for Python codebases. Use this skill when the user asks about: setting up CodeKG in a project, adding code-kg as a Poetry dependency, building the SQLite or LanceDB knowledge graph, configuring .mcp.json for Claude Code or Kilo Code, configuring .vscode/mcp.json for GitHub Copilot, configuring claude_desktop_config.json for Claude Desktop, configuring Cline MCP settings, using the codekg-mcp CLI, running codekg-build-sqlite or codekg-build-lancedb, using the graph_stats / query_codebase / pack_snippets / get_node MCP tools, or troubleshooting CodeKG errors.
 ---
 
 # CodeKG Skill
@@ -33,7 +33,9 @@ poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 
 Add `--wipe` to either command to rebuild from scratch.
 
-## Configure Claude Code (.mcp.json)
+## Configure Claude Code / Kilo Code (.mcp.json)
+
+Both Claude Code and Kilo Code read per-repo config from `.mcp.json` in the project root.
 
 ```json
 {
@@ -45,13 +47,44 @@ Add `--wipe` to either command to rebuild from scratch.
         "--repo",    "/absolute/path/to/repo",
         "--db",      "/absolute/path/to/repo/codekg.sqlite",
         "--lancedb", "/absolute/path/to/repo/lancedb"
-      ]
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
     }
   }
 }
 ```
 
 Always use **absolute paths**. Merge into existing `mcpServers` — don't overwrite other entries.
+
+> ⚠️ Do NOT add `codekg` to any global settings file — use per-repo `.mcp.json` only.
+
+## Configure GitHub Copilot (.vscode/mcp.json)
+
+GitHub Copilot uses a different schema — `"servers"` key and `"type": "stdio"` required:
+
+```json
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/repo/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/repo/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
+```
+
+VS Code will prompt you to **Trust** the server on first use.
 
 ## Configure Claude Desktop (claude_desktop_config.json)
 
