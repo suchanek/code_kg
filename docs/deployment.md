@@ -320,44 +320,112 @@ pip install https://github.com/suchanek/code_kg/releases/download/v0.1.0/code_kg
 
 ---
 
-## Option 6 — MCP Server (Emerging AI tooling integration)
+## Option 6 — MCP Server (AI agent integration)
 
-CodeKG's hybrid query + snippet pack API maps naturally onto the
-[Model Context Protocol](https://modelcontextprotocol.io/) — exposing
-`codekg-query` and `codekg-pack` as MCP tools lets any MCP-compatible
-agent (Claude, Cursor, etc.) query your codebase knowledge graph directly.
+CodeKG ships a production-ready MCP server (`codekg-mcp`) that exposes the full hybrid query and snippet-pack pipeline as structured tools for any MCP-compatible agent — Claude Code, Kilo Code, GitHub Copilot, Claude Desktop, Cursor, Continue, or any custom agent.
 
-A minimal `mcp_server.py` sketch:
+### Install
 
-```python
-from mcp.server.fastmcp import FastMCP
-from code_kg import CodeKG
-
-mcp = FastMCP("codekg")
-kg = CodeKG(repo_root=".", db_path="codekg.sqlite", lancedb_dir="./lancedb")
-
-@mcp.tool()
-def query_codebase(q: str, k: int = 8, hop: int = 1) -> str:
-    """Hybrid semantic + structural query over the codebase knowledge graph."""
-    result = kg.query(q, k=k, hop=hop)
-    return result.to_json()
-
-@mcp.tool()
-def pack_snippets(q: str, k: int = 8, hop: int = 1) -> str:
-    """Return source-grounded code snippets relevant to a query."""
-    pack = kg.pack(q, k=k, hop=hop)
-    return pack.to_markdown()
-
-if __name__ == "__main__":
-    mcp.run()
+```bash
+# With MCP server support
+poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
+# or
+pip install "code-kg[mcp]"
 ```
 
-Register in `pyproject.toml`:
+### Build the knowledge graph first
 
-```toml
-[tool.poetry.scripts]
-codekg-mcp = "code_kg.mcp_server:main"
+```bash
+poetry run codekg-build-sqlite  --repo /path/to/repo --db codekg.sqlite
+poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 ```
+
+### Start the server manually
+
+```bash
+codekg-mcp \
+  --repo    /path/to/repo \
+  --db      /path/to/codekg.sqlite \
+  --lancedb /path/to/lancedb
+```
+
+### Exposed tools
+
+| Tool | Description |
+|---|---|
+| `graph_stats()` | Node and edge counts by kind/relation |
+| `query_codebase(q, ...)` | Hybrid semantic + structural query; returns JSON |
+| `pack_snippets(q, ...)` | Hybrid query + source-grounded snippets; returns Markdown |
+| `get_node(node_id)` | Fetch a single node by stable ID |
+
+### Agent configuration quick reference
+
+| Agent | Config file | Key |
+|---|---|---|
+| **Claude Code / Kilo Code** | `.mcp.json` (project root) | `"mcpServers"` |
+| **GitHub Copilot** | `.vscode/mcp.json` (workspace root) | `"servers"` + `"type": "stdio"` |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | `"mcpServers"` |
+| **Cline** | Global `cline_mcp_settings.json` only | `"mcpServers"` |
+
+**Claude Code / Kilo Code** (`.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "codekg": {
+      "command": "poetry",
+      "args": ["run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/repo/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/repo/lancedb"
+      ],
+      "env": { "POETRY_VIRTUALENVS_IN_PROJECT": "false" }
+    }
+  }
+}
+```
+
+**GitHub Copilot** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": ["run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/repo/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/repo/lancedb"
+      ],
+      "env": { "POETRY_VIRTUALENVS_IN_PROJECT": "false" }
+    }
+  }
+}
+```
+
+**Claude Desktop** — use the absolute venv binary path (Poetry not on PATH):
+```bash
+poetry env info --path   # → /path/to/venv; binary at /path/to/venv/bin/codekg-mcp
+```
+```json
+{
+  "mcpServers": {
+    "codekg": {
+      "command": "/path/to/venv/bin/codekg-mcp",
+      "args": ["--repo", "/abs/path", "--db", "/abs/path/codekg.sqlite", "--lancedb", "/abs/path/lancedb"]
+    }
+  }
+}
+```
+
+### Automated setup
+
+The `/setup-mcp` command (available in Claude Code / Kilo Code) automates the full workflow — install, build, smoke-test, and write all config files:
+
+```
+/setup-mcp /path/to/repo
+```
+
+See [`docs/MCP.md`](MCP.md) for the complete reference.
 
 ---
 

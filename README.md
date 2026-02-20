@@ -324,16 +324,18 @@ See [`docs/docker.md`](docs/docker.md) for the full Docker reference.
 
 ## MCP Server
 
-CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the full query pipeline as structured tools for any MCP-compatible AI agent — Claude Desktop, Cursor, Continue, or any custom agent.
+CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the full query pipeline as structured tools for any MCP-compatible AI agent — Claude Code, Kilo Code, GitHub Copilot, Claude Desktop, Cursor, Continue, or any custom agent.
 
 ### Prerequisites
 
 Build the knowledge graph first (the MCP server is read-only):
 
 ```bash
-codekg-build-sqlite --repo /path/to/repo --db codekg.sqlite
-codekg-build-lancedb --db codekg.sqlite --lancedb ./lancedb
+codekg-build-sqlite  --repo /path/to/repo --db codekg.sqlite
+codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 ```
+
+> **Note:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
 
 Install the optional `mcp` dependency:
 
@@ -372,9 +374,9 @@ Add a `codekg` entry to `claude_desktop_config.json`
 
 Use **absolute paths** — Claude Desktop does not inherit your shell's working directory. Restart Claude Desktop after editing the config.
 
-### Configuring Claude Code (`.mcp.json`)
+### Configuring Claude Code / Kilo Code (`.mcp.json`)
 
-For Claude Code, use `poetry run` so the entry point resolves correctly:
+Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Use `poetry run` so the entry point resolves correctly:
 
 ```json
 {
@@ -383,14 +385,45 @@ For Claude Code, use `poetry run` so the entry point resolves correctly:
       "command": "poetry",
       "args": [
         "run", "codekg-mcp",
-        "--repo",    "/path/to/repo",
-        "--db",      "/path/to/codekg.sqlite",
-        "--lancedb", "/path/to/lancedb"
-      ]
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
     }
   }
 }
 ```
+
+> ⚠️ Use per-repo `.mcp.json` only — do NOT add `codekg` to any global settings file.
+
+### Configuring GitHub Copilot (`.vscode/mcp.json`)
+
+GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key, `"type": "stdio"` required):
+
+```json
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
+```
+
+VS Code will prompt you to **Trust** the server on first use.
 
 ### Automated Setup with `/setup-mcp`
 

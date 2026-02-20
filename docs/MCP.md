@@ -31,12 +31,15 @@ poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
 poetry run codekg-build-sqlite  --repo . --db codekg.sqlite
 poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 
-# 3. Add .mcp.json to your project root (see Section 4)
+# 3. Add per-repo config for your agent (see Section 4–6)
+#    • Claude Code / Kilo Code → .mcp.json
+#    • GitHub Copilot          → .vscode/mcp.json
+#    • Claude Desktop          → claude_desktop_config.json (global)
 
-# 4. Restart Claude Code — the codekg tools are now active
+# 4. Restart your agent — the codekg tools are now active
 ```
 
-Or use the automated setup command inside Claude Code:
+Or use the automated setup command inside Claude Code / Kilo Code:
 
 ```
 /setup-mcp
@@ -67,14 +70,17 @@ This installs `~/.claude/skills/codekg/` so that any Claude Code session (with `
 1. [Installation](#1-installation)
 2. [Building the Knowledge Graph](#2-building-the-knowledge-graph)
 3. [Smoke-Testing the Pipeline](#3-smoke-testing-the-pipeline)
-4. [Configuring Claude Code](#4-configuring-claude-code)
-5. [Configuring Claude Desktop](#5-configuring-claude-desktop)
-6. [Automated Setup with `/setup-mcp`](#6-automated-setup-with-setup-mcp)
-7. [Claude Copilot Integration](#7-claude-copilot-integration)
-8. [Available Tools Reference](#8-available-tools-reference)
-9. [Query Strategy Guide](#9-query-strategy-guide)
-10. [Rebuilding After Code Changes](#10-rebuilding-after-code-changes)
-11. [Troubleshooting](#11-troubleshooting)
+4. [Configuring Claude Code / Kilo Code](#4-configuring-claude-code--kilo-code)
+5. [Configuring GitHub Copilot](#5-configuring-github-copilot)
+6. [Configuring Claude Desktop](#6-configuring-claude-desktop)
+7. [Configuring Cline](#7-configuring-cline)
+8. [Installing the CodeKG Skill](#8-installing-the-codekg-skill)
+9. [Automated Setup with `/setup-mcp`](#9-automated-setup-with-setup-mcp)
+10. [Claude Copilot Integration](#10-claude-copilot-integration)
+11. [Available Tools Reference](#11-available-tools-reference)
+12. [Query Strategy Guide](#12-query-strategy-guide)
+13. [Rebuilding After Code Changes](#13-rebuilding-after-code-changes)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
@@ -236,9 +242,11 @@ If this succeeds, the MCP server will work correctly.
 
 ---
 
-## 4. Configuring Claude Code
+## 4. Configuring Claude Code / Kilo Code
 
-Claude Code reads MCP server configuration from `.mcp.json` in the **project root**.
+Both **Claude Code** and **Kilo Code** read MCP servers from `.mcp.json` in the **project root**. Use `poetry run` so the entry point resolves correctly regardless of venv location.
+
+> ⚠️ **Per-repo only.** Do NOT add `codekg` to any global settings file (Kilo Code's `mcp_settings.json` or Claude Code's `~/.claude/settings.json`). Global files are shared across all windows — hardcoded paths will point every window to the same repo.
 
 ### 4a. Create or update `.mcp.json`
 
@@ -261,7 +269,7 @@ Claude Code reads MCP server configuration from `.mcp.json` in the **project roo
 }
 ```
 
-> **Always use absolute paths.** Claude Code does not inherit your shell's working directory.
+> **Always use absolute paths.** Claude Code / Kilo Code do not inherit your shell's working directory.
 
 ### 4b. Merging with existing `.mcp.json`
 
@@ -280,7 +288,10 @@ If you already have other MCP servers configured (e.g. `copilot-memory`, `skills
         "--repo",    "/absolute/path/to/repo",
         "--db",      "/absolute/path/to/repo/codekg.sqlite",
         "--lancedb", "/absolute/path/to/repo/lancedb"
-      ]
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
     }
   }
 }
@@ -288,15 +299,51 @@ If you already have other MCP servers configured (e.g. `copilot-memory`, `skills
 
 ### 4c. Activate
 
-Restart Claude Code (close and reopen the project). The `codekg` server will appear in the MCP tools panel.
+Restart Claude Code / reload the Kilo Code MCP panel. The `codekg` server will appear in the MCP tools list.
 
 ---
 
-## 5. Configuring Claude Desktop
+## 5. Configuring GitHub Copilot
+
+GitHub Copilot in VS Code reads MCP servers from `.vscode/mcp.json` in the **workspace root**. Note the key differences from `.mcp.json`:
+
+- Uses `"servers"` (not `"mcpServers"`)
+- Requires `"type": "stdio"` for local process servers
+- Can be committed to source control to share the config with your team
+
+### 5a. Create or update `.vscode/mcp.json`
+
+```json
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "/absolute/path/to/repo",
+        "--db",      "/absolute/path/to/repo/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/repo/lancedb"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
+```
+
+### 5b. Activate
+
+After saving, VS Code will display a prompt to **Trust** the MCP server — click Trust to activate it. The `codekg` tools will then be available in GitHub Copilot Chat.
+
+---
+
+## 6. Configuring Claude Desktop
 
 Claude Desktop does not have Poetry on its PATH, so you must use the **absolute path to the venv binary**.
 
-### 5a. Find the venv binary path
+### 6a. Find the venv binary path
 
 ```bash
 # In the project directory
@@ -306,7 +353,7 @@ poetry env info --path
 
 The `codekg-mcp` binary is at `<venv_path>/bin/codekg-mcp`.
 
-### 5b. Edit `claude_desktop_config.json`
+### 6b. Edit `claude_desktop_config.json`
 
 | OS | Config path |
 |---|---|
@@ -331,13 +378,90 @@ Add the `codekg` entry:
 }
 ```
 
-### 5c. Activate
+### 6c. Activate
 
 Restart Claude Desktop. The `codekg` server will appear in the tool panel.
 
 ---
 
-## 6. Automated Setup with `/setup-mcp`
+## 7. Configuring Cline
+
+> ⚠️ **Cline does NOT support per-repo MCP config.** Its settings file is global and shared across all VS Code windows.
+
+### Options
+
+**Option A — Use Kilo Code instead** (recommended): Kilo Code is a drop-in replacement for Cline that supports per-repo `.mcp.json`. Switch to Kilo Code and follow Section 4.
+
+**Option B — Named entry per repo**: Add a uniquely-named entry to Cline's global settings file and toggle it via the Cline MCP panel when switching repos.
+
+Config path (macOS):
+```
+~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+```
+
+Add a repo-specific named entry:
+
+```json
+{
+  "mcpServers": {
+    "codekg-myproject": {
+      "command": "/path/to/venv/bin/codekg-mcp",
+      "args": [
+        "--repo",    "/absolute/path/to/myproject",
+        "--db",      "/absolute/path/to/myproject/codekg.sqlite",
+        "--lancedb", "/absolute/path/to/myproject/lancedb"
+      ]
+    }
+  }
+}
+```
+
+Use the absolute venv binary path (from `poetry env info --path`) — Cline does not have Poetry on its PATH.
+
+---
+
+## 8. Installing the CodeKG Skill
+
+The CodeKG skill gives AI agents expert knowledge about CodeKG installation and usage. It must be installed to the correct directory for each agent type.
+
+| Agent | Skill directory |
+|---|---|
+| **Claude Code** | `~/.claude/skills/codekg/` (served by `skills-copilot` MCP server) |
+| **Kilo Code** | `~/.kilocode/skills/codekg/` |
+| **Other agents** | `~/.agents/skills/codekg/` |
+
+### Install to all locations at once (recommended)
+
+```bash
+# From the code_kg repo root
+bash scripts/install-skill.sh
+
+# Or without cloning (one-liner)
+curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+```
+
+The script installs `SKILL.md` and `references/installation.md` to all three skill directories and injects the `codekg` MCP entry into `.mcp.json` in the current directory.
+
+### Manual install
+
+```bash
+# Claude Code
+mkdir -p ~/.claude/skills/codekg/references
+cp .claude/skills/codekg/SKILL.md ~/.claude/skills/codekg/SKILL.md
+cp .claude/skills/codekg/references/installation.md ~/.claude/skills/codekg/references/installation.md
+
+# Kilo Code
+mkdir -p ~/.kilocode/skills/codekg/references
+cp .claude/skills/codekg/SKILL.md ~/.kilocode/skills/codekg/SKILL.md
+cp .claude/skills/codekg/references/installation.md ~/.kilocode/skills/codekg/references/installation.md
+```
+
+After installing for Kilo Code, reload VS Code (`Cmd+Shift+P` → **Developer: Reload Window**) to pick up the new skill.
+
+---
+
+## 9. Automated Setup with `/setup-mcp`
+
 
 If your project uses **Claude Copilot**, the `/setup-mcp` command automates the entire installation and configuration process.
 
@@ -386,7 +510,7 @@ Suggested first query after restart:
 
 ---
 
-## 7. Claude Copilot Integration
+## 10. Claude Copilot Integration
 
 If your project uses [Claude Copilot](https://github.com/Everyone-Needs-A-Copilot/claude-copilot), CodeKG integrates naturally with the agent framework.
 
@@ -480,7 +604,7 @@ The `@agent-doc` agent is particularly well-suited to use `pack_snippets` when g
 
 ---
 
-## 8. Available Tools Reference
+## 11. Available Tools Reference
 
 ### `graph_stats()`
 
@@ -576,7 +700,7 @@ Fetch a single node by its stable ID.
 
 ---
 
-## 9. Query Strategy Guide
+## 12. Query Strategy Guide
 
 ### Choosing `k` and `hop`
 
@@ -619,7 +743,7 @@ Higher `hop` values expand the result set geometrically. Use `max_nodes` in `pac
 
 ---
 
-## 10. Rebuilding After Code Changes
+## 13. Rebuilding After Code Changes
 
 When the codebase changes, rebuild both artifacts (safe to re-run, idempotent):
 
@@ -643,7 +767,7 @@ lancedb/
 
 ---
 
-## 11. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
