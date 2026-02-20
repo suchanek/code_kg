@@ -1,9 +1,16 @@
 # code_kg
 
-**CodeKG v0** — A Deterministic Knowledge Graph for Python Codebases  
+**CodeKG** — A Deterministic Knowledge Graph for Python Codebases
 with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Author: Eric G. Suchanek, PhD*
+
+
+[![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
+[![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/suchanek/code_kg/releases)
+[![Tests](https://github.com/suchanek/code_kg/actions/workflows/tests.yml/badge.svg)](https://github.com/suchanek/code_kg/actions/workflows/tests.yml)
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
 ---
 
@@ -159,11 +166,7 @@ Snippet pack — Markdown / JSON  (codekg_snippet_packer.py)
 
 ## Installation
 
-```bash
-pip install code-kg
-```
-
-Or with [Poetry](https://python-poetry.org/):
+Clone the repository and install with [Poetry](https://python-poetry.org/):
 
 ```bash
 git clone https://github.com/suchanek/code_kg.git
@@ -174,12 +177,30 @@ poetry install
 To include the MCP server:
 
 ```bash
-pip install "code-kg[mcp]"
-# or
-poetry add mcp
+poetry install --extras mcp
 ```
 
 **Requirements:** Python ≥ 3.10, < 3.13
+
+### Install the AI Agent Skill (optional)
+
+After cloning and installing, run the skill installer to configure CodeKG for your AI agents. The script can be run from any target repository — it will configure that repo end-to-end:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+```
+
+**What the installer does:**
+
+1. Installs the `SKILL.md` reference files to `~/.claude/skills/codekg/`, `~/.kilocode/skills/codekg/`, and `~/.agents/skills/codekg/`
+2. Installs the `/codekg` slash command into the target repo (`.claude/commands/codekg.md`)
+3. Verifies or installs `codekg-mcp` via Poetry
+4. Builds the SQLite knowledge graph (`codekg.sqlite`) if not already present
+5. Builds the LanceDB semantic index (`codekg_lancedb/`) if not already present
+6. Writes `.mcp.json` for Claude Code and Kilo Code
+7. Writes `.vscode/mcp.json` for GitHub Copilot
+
+After the script completes, reload VS Code (`Cmd+Shift+P` → `Developer: Reload Window`) to activate the MCP servers.
 
 ---
 
@@ -340,7 +361,7 @@ codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 Install the optional `mcp` dependency:
 
 ```bash
-pip install "code-kg[mcp]"
+poetry install --extras mcp
 ```
 
 ### Available Tools
@@ -376,22 +397,18 @@ Use **absolute paths** — Claude Desktop does not inherit your shell's working 
 
 ### Configuring Claude Code / Kilo Code (`.mcp.json`)
 
-Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Use `poetry run` so the entry point resolves correctly:
+Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `command` directly at the `codekg-mcp` binary inside the Poetry virtual environment:
 
 ```json
 {
   "mcpServers": {
     "codekg": {
-      "command": "poetry",
+      "command": "/absolute/path/to/.venv/bin/codekg-mcp",
       "args": [
-        "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
         "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/lancedb"
-      ],
-      "env": {
-        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
-      }
+        "--lancedb", "/absolute/path/to/codekg_lancedb"
+      ]
     }
   }
 }
@@ -401,23 +418,22 @@ Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Use `poetr
 
 ### Configuring GitHub Copilot (`.vscode/mcp.json`)
 
-GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key, `"type": "stdio"` required):
+GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key, `"type": "stdio"` required). Each flag and value must be a separate element in `args`:
 
 ```json
 {
   "servers": {
     "codekg": {
       "type": "stdio",
-      "command": "poetry",
+      "command": "/absolute/path/to/.venv/bin/codekg-mcp",
       "args": [
-        "run", "codekg-mcp",
-        "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/lancedb"
-      ],
-      "env": {
-        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
-      }
+        "--repo",
+        "/absolute/path/to/repo",
+        "--db",
+        "/absolute/path/to/codekg.sqlite",
+        "--lancedb",
+        "/absolute/path/to/codekg_lancedb"
+      ]
     }
   }
 }
@@ -460,7 +476,7 @@ See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schem
 ```
 code_kg/
 ├── src/code_kg/
-│   ├── codekg.py                # Locked v0 primitives: Node, Edge, extract_repo
+│   ├── codekg.py                # Core primitives: Node, Edge, extract_repo
 │   ├── graph.py                 # CodeGraph — pure AST extraction
 │   ├── store.py                 # GraphStore — SQLite persistence + traversal
 │   ├── index.py                 # SemanticIndex, Embedder, SeedHit
@@ -492,4 +508,6 @@ code_kg/
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — see [LICENSE](LICENSE).
+
+Free for personal use, research, education, and noncommercial organizations. Commercial use requires a separate license.
