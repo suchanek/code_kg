@@ -7,8 +7,13 @@
 #   ~/.kilocode/skills/codekg/  (Kilo Code — ~/.kilocode/skills/ for agent skills)
 #   ~/.agents/skills/codekg/    (other agents)
 #
-# Also injects the codekg MCP server entry into .mcp.json in the TARGET_REPO
-# (defaults to the current working directory when the script is run).
+# Also configures the target repo (defaults to CWD) end-to-end:
+#   - Installs .claude/commands/codekg.md (Cline /codekg slash command)
+#   - Installs code-kg via Poetry if not already present
+#   - Builds the SQLite knowledge graph if not already present
+#   - Builds the LanceDB vector index if not already present
+#   - Writes .mcp.json (Kilo Code / Claude Code)
+#   - Writes .vscode/mcp.json (GitHub Copilot)
 #
 # Usage (from the code_kg repo root):
 #   bash scripts/install-skill.sh
@@ -21,8 +26,12 @@
 #   2. Downloads SKILL.md and references/installation.md from GitHub
 #      (or copies from local repo if running from within the clone)
 #   3. Installs .claude/commands/codekg.md into TARGET_REPO (Cline /codekg slash command)
-#   4. Injects the codekg MCP server entry into .mcp.json in TARGET_REPO
-#   5. Prints next steps
+#   4. Installs code-kg[mcp] via Poetry if codekg-mcp is not found
+#   5. Builds the SQLite knowledge graph if codekg.sqlite does not exist
+#   6. Builds the LanceDB vector index if the lancedb/ directory does not exist
+#   7. Writes .mcp.json (Kilo Code / Claude Code per-repo config)
+#   8. Writes .vscode/mcp.json (GitHub Copilot per-repo config)
+#   9. Prints a final summary (only manual step: reload VS Code)
 # =============================================================================
 
 set -eo pipefail
@@ -52,18 +61,26 @@ else
 fi
 LOCAL_SKILL="${REPO_ROOT:+${REPO_ROOT}/.claude/skills/codekg/SKILL.md}"
 
-# The target repo is where the user ran the script from (CWD), unless we're
-# running from inside the code_kg repo itself (in which case we still use CWD).
+# The target repo is where the user ran the script from (CWD).
 TARGET_REPO="${PWD}"
+SQLITE_DB="${TARGET_REPO}/codekg.sqlite"
+LANCEDB_DIR="${TARGET_REPO}/lancedb"
+# Also check for codekg_lancedb (alternate naming convention)
+if [ -d "${TARGET_REPO}/codekg_lancedb" ] && [ ! -d "${LANCEDB_DIR}" ]; then
+    LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
+fi
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║       CodeKG Skill Installer                     ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
-echo "Installing for: Claude Code (~/.claude/skills) + Kilo Code (~/.kilocode/skills) + other agents (~/.agents/skills)"
+echo "Target repo: ${TARGET_REPO}"
 echo ""
 
-# ── Install to each target directory ─────────────────────────────────────────
+# ── Step 1: Install skill files to agent directories ─────────────────────────
+echo "── Step 1: Installing skill files ──────────────────"
+echo ""
+
 for SKILL_DIR in "${SKILL_DIRS[@]}"; do
     REFS_DIR="${SKILL_DIR}/references"
     mkdir -p "$SKILL_DIR"
@@ -104,9 +121,10 @@ for SKILL_DIR in "${SKILL_DIRS[@]}"; do
     echo "  ✓ ${REFS_DIR}/installation.md"
 done
 
-# ── Install Cline slash command into the target repo ─────────────────────────
+# ── Step 2: Install Cline slash command into the target repo ──────────────────
 echo ""
-echo "→ Installing Cline slash command in: ${TARGET_REPO}/.claude/commands/codekg.md"
+echo "── Step 2: Installing Cline slash command ───────────"
+echo ""
 
 CLINE_CMD_DIR="${TARGET_REPO}/.claude/commands"
 CLINE_CMD_FILE="${CLINE_CMD_DIR}/codekg.md"
@@ -131,130 +149,228 @@ else
     [ -f "$CLINE_CMD_FILE" ] && echo "  ✓ Downloaded → ${CLINE_CMD_FILE}"
 fi
 
-# ── Inject codekg into .mcp.json in the target repo ──────────────────────────
+# ── Step 3: Install code-kg via Poetry if not already present ─────────────────
 echo ""
-echo "→ Configuring MCP server in: ${TARGET_REPO}/.mcp.json"
+echo "── Step 3: Checking code-kg installation ────────────"
+echo ""
 
-MCP_JSON="${TARGET_REPO}/.mcp.json"
-
-# Detect the codekg-mcp binary: prefer venv inside target repo, fall back to
-# poetry run (for repos that use poetry without in-project venv), then PATH.
 CODEKG_BIN=""
 if [ -x "${TARGET_REPO}/.venv/bin/codekg-mcp" ]; then
     CODEKG_BIN="${TARGET_REPO}/.venv/bin/codekg-mcp"
+    echo "  ✓ Found codekg-mcp in .venv: ${CODEKG_BIN}"
 elif command -v codekg-mcp &>/dev/null; then
     CODEKG_BIN="$(command -v codekg-mcp)"
+    echo "  ✓ Found codekg-mcp on PATH: ${CODEKG_BIN}"
 elif command -v poetry &>/dev/null && (cd "${TARGET_REPO}" && poetry run codekg-mcp --help &>/dev/null 2>&1); then
-    # Resolve the actual path inside poetry's managed venv
     CODEKG_BIN="$(cd "${TARGET_REPO}" && poetry run which codekg-mcp 2>/dev/null || true)"
+    echo "  ✓ Found codekg-mcp in poetry venv: ${CODEKG_BIN}"
 fi
 
 if [ -z "$CODEKG_BIN" ]; then
-    echo "  ⚠ codekg-mcp not found in .venv, PATH, or poetry venv."
-    echo "    Install it first:"
-    echo '      poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"'
-    echo "    Then re-run this script to inject the MCP config."
-else
-    # Determine DB paths (use existing files if present, else defaults)
-    SQLITE_DB="${TARGET_REPO}/codekg.sqlite"
-    LANCEDB_DIR="${TARGET_REPO}/lancedb"
-    # Also check for codekg_lancedb (alternate naming convention)
-    if [ -d "${TARGET_REPO}/codekg_lancedb" ] && [ ! -d "${LANCEDB_DIR}" ]; then
-        LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
+    if command -v poetry &>/dev/null; then
+        echo "  → codekg-mcp not found. Installing code-kg[mcp] via Poetry..."
+        (cd "${TARGET_REPO}" && poetry add 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git')
+        CODEKG_BIN="$(cd "${TARGET_REPO}" && poetry run which codekg-mcp 2>/dev/null || true)"
+        if [ -n "$CODEKG_BIN" ]; then
+            echo "  ✓ Installed code-kg — codekg-mcp at: ${CODEKG_BIN}"
+        else
+            echo "  ✗ Installation failed. Please install manually:"
+            echo '      poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"'
+            echo "  Then re-run this script."
+            exit 1
+        fi
+    else
+        echo "  ✗ Neither codekg-mcp nor poetry found."
+        echo "    Install Poetry first: https://python-poetry.org/docs/#installation"
+        echo "    Then re-run this script."
+        exit 1
     fi
+fi
 
-    # Build the codekg server JSON block
-    CODEKG_ENTRY=$(cat <<EOF
+# From here on, use `poetry run codekg-*` for build commands (works regardless
+# of whether CODEKG_BIN is an absolute path or resolved via poetry).
+_POETRY_RUN=""
+if command -v poetry &>/dev/null; then
+    _POETRY_RUN="poetry run"
+fi
+
+# ── Step 4: Build the SQLite knowledge graph ──────────────────────────────────
+echo ""
+echo "── Step 4: Building SQLite knowledge graph ──────────"
+echo ""
+
+if [ -f "$SQLITE_DB" ]; then
+    echo "  ✓ SQLite graph already exists: ${SQLITE_DB} — skipping build"
+    echo "    (Run with --wipe to force rebuild)"
+else
+    echo "  → Building SQLite graph at: ${SQLITE_DB}"
+    (cd "${TARGET_REPO}" && ${_POETRY_RUN} codekg-build-sqlite --repo "${TARGET_REPO}" --db "${SQLITE_DB}")
+    if [ -f "$SQLITE_DB" ]; then
+        NODE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM nodes;" 2>/dev/null || echo "?")
+        EDGE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM edges;" 2>/dev/null || echo "?")
+        echo "  ✓ Built: ${SQLITE_DB} (${NODE_COUNT} nodes, ${EDGE_COUNT} edges)"
+    else
+        echo "  ✗ Build failed — ${SQLITE_DB} not created"
+        exit 1
+    fi
+fi
+
+# ── Step 5: Build the LanceDB vector index ────────────────────────────────────
+echo ""
+echo "── Step 5: Building LanceDB vector index ────────────"
+echo ""
+
+if [ -d "$LANCEDB_DIR" ] && [ "$(ls -A "$LANCEDB_DIR" 2>/dev/null)" ]; then
+    echo "  ✓ LanceDB index already exists: ${LANCEDB_DIR} — skipping build"
+    echo "    (Run with --wipe to force rebuild)"
+else
+    echo "  → Building LanceDB index at: ${LANCEDB_DIR}"
+    (cd "${TARGET_REPO}" && ${_POETRY_RUN} codekg-build-lancedb --sqlite "${SQLITE_DB}" --lancedb "${LANCEDB_DIR}")
+    if [ -d "$LANCEDB_DIR" ] && [ "$(ls -A "$LANCEDB_DIR" 2>/dev/null)" ]; then
+        echo "  ✓ Built: ${LANCEDB_DIR}"
+    else
+        echo "  ✗ Build failed — ${LANCEDB_DIR} not populated"
+        exit 1
+    fi
+fi
+
+# ── Step 6: Write .mcp.json (Kilo Code / Claude Code) ────────────────────────
+echo ""
+echo "── Step 6: Configuring .mcp.json (Kilo Code / Claude Code) ──"
+echo ""
+
+MCP_JSON="${TARGET_REPO}/.mcp.json"
+
+CODEKG_ENTRY=$(cat <<EOF
     "codekg": {
-      "command": "${CODEKG_BIN}",
+      "command": "poetry",
       "args": [
+        "run", "codekg-mcp",
         "--repo",    "${TARGET_REPO}",
         "--db",      "${SQLITE_DB}",
         "--lancedb", "${LANCEDB_DIR}"
-      ]
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
     }
 EOF
 )
 
-    if [ ! -f "$MCP_JSON" ]; then
-        # Create a fresh .mcp.json
-        cat > "$MCP_JSON" <<EOF
+if [ ! -f "$MCP_JSON" ]; then
+    cat > "$MCP_JSON" <<EOF
 {
   "mcpServers": {
 ${CODEKG_ENTRY}
   }
 }
 EOF
-        echo "  ✓ Created ${MCP_JSON} with codekg entry"
-
-    elif grep -q '"codekg"' "$MCP_JSON"; then
-        echo "  ✓ codekg entry already present in ${MCP_JSON} — skipping"
-
-    else
-        # Append codekg to existing mcpServers using Python (available everywhere)
-        python3 - "$MCP_JSON" "$CODEKG_BIN" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" <<'PYEOF'
+    echo "  ✓ Created ${MCP_JSON}"
+elif grep -q '"codekg"' "$MCP_JSON"; then
+    echo "  ✓ codekg entry already present in ${MCP_JSON} — skipping"
+else
+    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" <<'PYEOF'
 import json, sys
-
 mcp_json_path = sys.argv[1]
-codekg_bin    = sys.argv[2]
-target_repo   = sys.argv[3]
-sqlite_db     = sys.argv[4]
-lancedb_dir   = sys.argv[5]
-
+target_repo   = sys.argv[2]
+sqlite_db     = sys.argv[3]
+lancedb_dir   = sys.argv[4]
 with open(mcp_json_path, "r") as f:
     data = json.load(f)
-
 if "mcpServers" not in data:
     data["mcpServers"] = {}
-
 data["mcpServers"]["codekg"] = {
-    "command": codekg_bin,
-    "args": [
-        "--repo",    target_repo,
-        "--db",      sqlite_db,
-        "--lancedb", lancedb_dir,
-    ]
+    "command": "poetry",
+    "args": ["run", "codekg-mcp",
+             "--repo",    target_repo,
+             "--db",      sqlite_db,
+             "--lancedb", lancedb_dir],
+    "env": {"POETRY_VIRTUALENVS_IN_PROJECT": "false"}
 }
-
 with open(mcp_json_path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 PYEOF
-        echo "  ✓ Added codekg entry to ${MCP_JSON}"
-    fi
+    echo "  ✓ Added codekg entry to ${MCP_JSON}"
 fi
 
+# ── Step 7: Write .vscode/mcp.json (GitHub Copilot) ──────────────────────────
 echo ""
-echo "══════════════════════════════════════════════════"
-echo "  CodeKG skill installed successfully!"
-echo "  Works in: Claude Code, Kilo Code, and Cline"
-echo "══════════════════════════════════════════════════"
+echo "── Step 7: Configuring .vscode/mcp.json (GitHub Copilot) ──"
 echo ""
-echo "Next steps:"
+
+VSCODE_DIR="${TARGET_REPO}/.vscode"
+VSCODE_MCP="${VSCODE_DIR}/mcp.json"
+mkdir -p "$VSCODE_DIR"
+
+if [ ! -f "$VSCODE_MCP" ]; then
+    cat > "$VSCODE_MCP" <<EOF
+{
+  "servers": {
+    "codekg": {
+      "type": "stdio",
+      "command": "poetry",
+      "args": [
+        "run", "codekg-mcp",
+        "--repo",    "${TARGET_REPO}",
+        "--db",      "${SQLITE_DB}",
+        "--lancedb", "${LANCEDB_DIR}"
+      ],
+      "env": {
+        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
+      }
+    }
+  }
+}
+EOF
+    echo "  ✓ Created ${VSCODE_MCP}"
+elif grep -q '"codekg"' "$VSCODE_MCP"; then
+    echo "  ✓ codekg entry already present in ${VSCODE_MCP} — skipping"
+else
+    python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" <<'PYEOF'
+import json, sys
+vscode_mcp  = sys.argv[1]
+target_repo = sys.argv[2]
+sqlite_db   = sys.argv[3]
+lancedb_dir = sys.argv[4]
+with open(vscode_mcp, "r") as f:
+    data = json.load(f)
+if "servers" not in data:
+    data["servers"] = {}
+data["servers"]["codekg"] = {
+    "type": "stdio",
+    "command": "poetry",
+    "args": ["run", "codekg-mcp",
+             "--repo",    target_repo,
+             "--db",      sqlite_db,
+             "--lancedb", lancedb_dir],
+    "env": {"POETRY_VIRTUALENVS_IN_PROJECT": "false"}
+}
+with open(vscode_mcp, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+    echo "  ✓ Added codekg entry to ${VSCODE_MCP}"
+fi
+
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo "  1. Install code-kg in your project (if not already done):"
-echo '     poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"'
+echo "╔══════════════════════════════════════════════════╗"
+echo "║   CodeKG installed and configured successfully!  ║"
+echo "╚══════════════════════════════════════════════════╝"
 echo ""
-echo "  2. Build the knowledge graph (if not already done):"
-echo "     poetry run codekg-build-sqlite  --repo . --db codekg.sqlite"
-echo "     poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb"
+echo "  Repo:    ${TARGET_REPO}"
+echo "  SQLite:  ${SQLITE_DB}"
+echo "  LanceDB: ${LANCEDB_DIR}"
+echo "  .mcp.json:        configured (Kilo Code / Claude Code)"
+echo "  .vscode/mcp.json: configured (GitHub Copilot)"
+echo "  /codekg slash cmd: installed (Cline)"
 echo ""
-echo "  3. Configure your AI agent:"
+echo "  ⚠ One manual step required:"
+echo "    Reload VS Code to activate the MCP servers:"
+echo "    Cmd+Shift+P → 'Developer: Reload Window'"
 echo ""
-echo "     GitHub Copilot (per-repo):"
-echo "       Add codekg entry to .vscode/mcp.json (uses 'servers' key, not 'mcpServers')"
-echo "       VS Code will prompt you to trust the server on first start"
-echo ""
-echo "     Kilo Code / Claude Code (per-repo, recommended):"
-echo "       .mcp.json was updated above (or create it with the codekg entry)"
-echo "       Run /setup-mcp inside Kilo Code for automated setup"
-echo ""
-echo "     Cline:"
-echo "       Slash command: /codekg is now available in this repo (installed above)"
-echo "       MCP server (global config only):"
-echo "         Edit: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
-echo "         Add a named entry: codekg-REPONAME (unique per repo)"
-echo ""
-echo "  4. Reload your AI agent / MCP servers to pick up the new config."
+echo "  GitHub Copilot: VS Code will prompt you to Trust the codekg server"
+echo "  on first use after reload."
 echo ""
 echo "  Full docs: https://github.com/suchanek/code_kg/blob/main/docs/MCP.md"
