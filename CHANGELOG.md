@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`src/code_kg/__main__.py`** — New subcommand dispatcher enabling `python -m code_kg <subcommand> [args…]` invocation. Maps `build-sqlite`, `build-lancedb`, `query`, `pack`, `viz`, and `mcp` to their respective `main()` entry points; rewrites `sys.argv` so each module's argparse sees a clean argument list with the correct `prog` name in `--help` output. Allows CodeKG to be used without activating a virtual environment or relying on `poetry run`, as long as the package is installed.
+
+### Changed
+
+- **`README.md`** — CLI Usage section rewritten to use `python -m code_kg <subcommand>` as the primary invocation pattern. Added dev-workflow note explaining `poetry run python -m code_kg` for contributors. Corrected all bare `codekg-*` command references that assumed scripts were on `PATH`.
+- **`scripts/install-skill.sh`** — Replaced `CODEKG_BIN` / `_POETRY_RUN` detection with `PYTHON_BIN`: detects the correct Python interpreter by checking `.venv/bin/python` first, then `python3` on PATH, then installing via `pip`. All build commands now use `"${PYTHON_BIN}" -m code_kg build-sqlite|build-lancedb` instead of `poetry run codekg-*`. MCP configs (`.mcp.json`, `.vscode/mcp.json`) now write `"command": "<python>"` with `"-m", "code_kg", "mcp"` as the first args, so the server works without venv activation. Removed dead `_discover_poetry` / `POETRY_BIN` code and the `poetry add` fallback.
+
+---
+
+### Added
+
 - **`tests/test_index.py`** — New comprehensive test suite (348 lines) covering `Embedder` ABC, `SentenceTransformerEmbedder` (fully mocked), `_build_index_text`, `_escape`, `_extract_distance`, and `SemanticIndex` build/search/cache integration tests using a lightweight `FakeEmbedder`.
 - **`.pre-commit-config.yaml`** — Added local `mypy` and `pytest` hooks so type-checking and tests run automatically on every commit.
 

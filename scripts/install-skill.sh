@@ -235,21 +235,6 @@ echo ""
 echo "── Step 3: Checking code-kg installation ────────────"
 echo ""
 
-# Resolve absolute path to poetry — VS Code extension host doesn't inherit the
-# user's shell PATH, so check common install locations explicitly.
-_discover_poetry() {
-    command -v poetry 2>/dev/null && return
-    for _p in \
-        "${HOME}/.local/bin/poetry" \
-        "${HOME}/.poetry/bin/poetry" \
-        "${HOME}/.pyenv/shims/poetry" \
-        "/usr/local/bin/poetry" \
-        "/opt/homebrew/bin/poetry"; do
-        [ -x "$_p" ] && echo "$_p" && return
-    done
-}
-POETRY_BIN="$(_discover_poetry || true)"
-
 # Resolve the latest GitHub release wheel URL (requires curl or wget + python3).
 # Returns empty string if no release exists yet.
 _latest_wheel_url() {
@@ -274,22 +259,24 @@ except Exception:
 PYEOF
 }
 
-CODEKG_BIN=""
-if [ -x "${TARGET_REPO}/.venv/bin/codekg-mcp" ]; then
-    CODEKG_BIN="${TARGET_REPO}/.venv/bin/codekg-mcp"
-    echo "  ✓ Found codekg-mcp in .venv: ${CODEKG_BIN}"
-elif command -v codekg-mcp &>/dev/null; then
-    CODEKG_BIN="$(command -v codekg-mcp)"
-    echo "  ✓ Found codekg-mcp on PATH: ${CODEKG_BIN}"
-elif command -v poetry &>/dev/null && (cd "${TARGET_REPO}" && poetry run codekg-mcp --help &>/dev/null 2>&1); then
-    CODEKG_BIN="$(cd "${TARGET_REPO}" && poetry run which codekg-mcp 2>/dev/null || true)"
-    echo "  ✓ Found codekg-mcp in poetry venv: ${CODEKG_BIN}"
+PYTHON_BIN=""
+# Prefer a .venv in the target repo if code_kg is already installed there
+if [ -x "${TARGET_REPO}/.venv/bin/python" ]; then
+    if "${TARGET_REPO}/.venv/bin/python" -c "import code_kg" &>/dev/null 2>&1; then
+        PYTHON_BIN="${TARGET_REPO}/.venv/bin/python"
+        echo "  ✓ Found code_kg in .venv: ${PYTHON_BIN}"
+    fi
+fi
+# Fall back to whatever python3 is on PATH
+if [ -z "$PYTHON_BIN" ] && python3 -c "import code_kg" &>/dev/null 2>&1; then
+    PYTHON_BIN="$(python3 -c "import sys; print(sys.executable)")"
+    echo "  ✓ Found code_kg at: ${PYTHON_BIN}"
 fi
 
-if [ -z "$CODEKG_BIN" ]; then
+if [ -z "$PYTHON_BIN" ]; then
     if [ -n "$DRY_RUN" ]; then
         echo "  [dry-run] would install code-kg[mcp] (wheel from GitHub Releases or git fallback)"
-        CODEKG_BIN="<venv>/bin/codekg-mcp"
+        PYTHON_BIN="<venv>/bin/python"
     else
         # ── Preferred: install from latest GitHub release wheel (no git needed) ──
         WHEEL_URL="$(_latest_wheel_url || true)"
@@ -297,38 +284,20 @@ if [ -z "$CODEKG_BIN" ]; then
             echo "  → Installing code-kg[mcp] from GitHub release wheel..."
             pip install --quiet "code-kg[mcp] @ ${WHEEL_URL}"
         else
-            # ── Fallback 1: pip from git (always works, needs git) ────────────
+            # ── Fallback: pip from git (always works, needs git) ──────────────
             echo "  → No release found. Installing code-kg[mcp] from git..."
             pip install --quiet "code-kg[mcp] @ git+https://github.com/${REPO}.git"
         fi
-        CODEKG_BIN="$(command -v codekg-mcp 2>/dev/null || true)"
+        PYTHON_BIN="$(python3 -c "import sys; print(sys.executable)" 2>/dev/null || true)"
 
-        # ── Fallback 2: poetry add (for Poetry-managed target repos) ─────────
-        if [ -z "$CODEKG_BIN" ] && command -v poetry &>/dev/null; then
-            echo "  → pip install did not land codekg-mcp on PATH; trying poetry add..."
-            if [ -n "$WHEEL_URL" ]; then
-                (cd "${TARGET_REPO}" && poetry add "code-kg[mcp] @ ${WHEEL_URL}")
-            else
-                (cd "${TARGET_REPO}" && poetry add "code-kg[mcp] @ git+https://github.com/${REPO}.git")
-            fi
-            CODEKG_BIN="$(cd "${TARGET_REPO}" && poetry run which codekg-mcp 2>/dev/null || true)"
-        fi
-
-        if [ -n "$CODEKG_BIN" ]; then
-            echo "  ✓ Installed code-kg — codekg-mcp at: ${CODEKG_BIN}"
+        if [ -n "$PYTHON_BIN" ] && "$PYTHON_BIN" -c "import code_kg" &>/dev/null 2>&1; then
+            echo "  ✓ Installed code-kg — python at: ${PYTHON_BIN}"
         else
             echo "  ✗ Installation failed. Install manually:"
             echo "      pip install 'code-kg[mcp] @ git+https://github.com/${REPO}.git'"
             exit 1
         fi
     fi
-fi
-
-# From here on, use `poetry run codekg-*` for build commands (works regardless
-# of whether CODEKG_BIN is an absolute path or resolved via poetry).
-_POETRY_RUN=""
-if command -v poetry &>/dev/null; then
-    _POETRY_RUN="poetry run"
 fi
 
 # ── Step 4: Build the SQLite knowledge graph ──────────────────────────────────
@@ -344,11 +313,11 @@ else
         _exec rm -f "$SQLITE_DB"
     fi
     if [ -n "$DRY_RUN" ]; then
-        echo "  [dry-run] would run: codekg-build-sqlite --repo ${TARGET_REPO} --db ${SQLITE_DB}"
+        echo "  [dry-run] would run: python -m code_kg build-sqlite --repo ${TARGET_REPO} --db ${SQLITE_DB}"
     else
         _exec mkdir -p "$(dirname "$SQLITE_DB")"
         echo "  → Building SQLite graph at: ${SQLITE_DB}"
-        (cd "${TARGET_REPO}" && ${_POETRY_RUN} codekg-build-sqlite --repo "${TARGET_REPO}" --db "${SQLITE_DB}")
+        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-sqlite --repo "${TARGET_REPO}" --db "${SQLITE_DB}")
         if [ -f "$SQLITE_DB" ]; then
             NODE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM nodes;" 2>/dev/null || echo "?")
             EDGE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM edges;" 2>/dev/null || echo "?")
@@ -373,10 +342,10 @@ else
         _exec rm -rf "$LANCEDB_DIR"
     fi
     if [ -n "$DRY_RUN" ]; then
-        echo "  [dry-run] would run: codekg-build-lancedb --sqlite ${SQLITE_DB} --lancedb ${LANCEDB_DIR}"
+        echo "  [dry-run] would run: python -m code_kg build-lancedb --sqlite ${SQLITE_DB} --lancedb ${LANCEDB_DIR}"
     else
         echo "  → Building LanceDB index at: ${LANCEDB_DIR}"
-        (cd "${TARGET_REPO}" && ${_POETRY_RUN} codekg-build-lancedb --sqlite "${SQLITE_DB}" --lancedb "${LANCEDB_DIR}")
+        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-lancedb --sqlite "${SQLITE_DB}" --lancedb "${LANCEDB_DIR}")
         if [ -d "$LANCEDB_DIR" ] && [ "$(ls -A "$LANCEDB_DIR" 2>/dev/null)" ]; then
             echo "  ✓ Built: ${LANCEDB_DIR}"
         else
@@ -408,8 +377,9 @@ elif [ ! -f "$MCP_JSON" ]; then
 {
   "mcpServers": {
     "codekg": {
-      "command": "${CODEKG_BIN}",
+      "command": "${PYTHON_BIN}",
       "args": [
+        "-m", "code_kg", "mcp",
         "--repo",
         "${TARGET_REPO}",
         "--db",
@@ -425,20 +395,20 @@ EOF
 elif grep -q '"codekg"' "$MCP_JSON"; then
     echo "  ✓ codekg entry already present in ${MCP_JSON} — skipping"
 else
-    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$CODEKG_BIN" <<'PYEOF'
+    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
 mcp_json_path = sys.argv[1]
 target_repo   = sys.argv[2]
 sqlite_db     = sys.argv[3]
 lancedb_dir   = sys.argv[4]
-codekg_bin    = sys.argv[5]
+python_bin    = sys.argv[5]
 with open(mcp_json_path, "r") as f:
     data = json.load(f)
 if "mcpServers" not in data:
     data["mcpServers"] = {}
 data["mcpServers"]["codekg"] = {
-    "command": codekg_bin,
-    "args": ["--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
+    "command": python_bin,
+    "args": ["-m", "code_kg", "mcp", "--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
 }
 with open(mcp_json_path, "w") as f:
     json.dump(data, f, indent=2)
@@ -474,8 +444,9 @@ else
   "servers": {
     "codekg": {
       "type": "stdio",
-      "command": "${CODEKG_BIN}",
+      "command": "${PYTHON_BIN}",
       "args": [
+        "-m", "code_kg", "mcp",
         "--repo",
         "${TARGET_REPO}",
         "--db",
@@ -491,21 +462,21 @@ EOF
     elif grep -q '"codekg"' "$VSCODE_MCP"; then
         echo "  ✓ codekg entry already present in ${VSCODE_MCP} — skipping"
     else
-        python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$CODEKG_BIN" <<'PYEOF'
+        python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
 vscode_mcp  = sys.argv[1]
 target_repo = sys.argv[2]
 sqlite_db   = sys.argv[3]
 lancedb_dir = sys.argv[4]
-codekg_bin  = sys.argv[5]
+python_bin  = sys.argv[5]
 with open(vscode_mcp, "r") as f:
     data = json.load(f)
 if "servers" not in data:
     data["servers"] = {}
 data["servers"]["codekg"] = {
     "type": "stdio",
-    "command": codekg_bin,
-    "args": ["--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
+    "command": python_bin,
+    "args": ["-m", "code_kg", "mcp", "--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
 }
 with open(vscode_mcp, "w") as f:
     json.dump(data, f, indent=2)
