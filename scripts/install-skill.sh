@@ -367,10 +367,8 @@ if [ "$DO_CLAUDE" = "0" ] && [ "$DO_KILO" = "0" ]; then
 elif [ -n "$DRY_RUN" ]; then
     if [ ! -f "$MCP_JSON" ]; then
         echo "  [dry-run] would create ${MCP_JSON}"
-    elif grep -q '"codekg"' "$MCP_JSON"; then
-        echo "  [dry-run] codekg entry already present in ${MCP_JSON} — no change needed"
     else
-        echo "  [dry-run] would merge codekg entry into existing ${MCP_JSON}"
+        echo "  [dry-run] would upsert codekg entry in existing ${MCP_JSON}"
     fi
 elif [ ! -f "$MCP_JSON" ]; then
     cat > "$MCP_JSON" <<EOF
@@ -392,8 +390,6 @@ elif [ ! -f "$MCP_JSON" ]; then
 }
 EOF
     echo "  ✓ Created ${MCP_JSON}"
-elif grep -q '"codekg"' "$MCP_JSON"; then
-    echo "  ✓ codekg entry already present in ${MCP_JSON} — skipping"
 else
     python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
@@ -414,7 +410,7 @@ with open(mcp_json_path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 PYEOF
-    echo "  ✓ Added codekg entry to ${MCP_JSON}"
+    echo "  ✓ Updated codekg entry in ${MCP_JSON}"
 fi
 
 # ── Step 7: Write .vscode/mcp.json (GitHub Copilot) ──────────────────────────
@@ -430,10 +426,8 @@ if [ "$DO_COPILOT" = "0" ]; then
 elif [ -n "$DRY_RUN" ]; then
     if [ ! -f "$VSCODE_MCP" ]; then
         echo "  [dry-run] would create ${VSCODE_MCP}"
-    elif grep -q '"codekg"' "$VSCODE_MCP"; then
-        echo "  [dry-run] codekg entry already present in ${VSCODE_MCP} — no change needed"
     else
-        echo "  [dry-run] would merge codekg entry into existing ${VSCODE_MCP}"
+        echo "  [dry-run] would upsert codekg entry in existing ${VSCODE_MCP}"
     fi
 else
     _exec mkdir -p "$VSCODE_DIR"
@@ -459,8 +453,6 @@ else
 }
 EOF
         echo "  ✓ Created ${VSCODE_MCP}"
-    elif grep -q '"codekg"' "$VSCODE_MCP"; then
-        echo "  ✓ codekg entry already present in ${VSCODE_MCP} — skipping"
     else
         python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
@@ -482,7 +474,7 @@ with open(vscode_mcp, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 PYEOF
-        echo "  ✓ Added codekg entry to ${VSCODE_MCP}"
+        echo "  ✓ Updated codekg entry in ${VSCODE_MCP}"
     fi
 fi  # DO_COPILOT
 
