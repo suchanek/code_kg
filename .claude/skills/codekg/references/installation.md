@@ -16,16 +16,16 @@
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--repo` | ✓ | — | Repository root path |
-| `--db` | ✓ | — | SQLite output path |
+| `--repo` | | `.` | Repository root path |
+| `--db` | | `.codekg/graph.sqlite` | SQLite output path |
 | `--wipe` | | false | Delete existing graph first |
 
 ### `codekg-build-lancedb`
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--sqlite` | ✓ | — | Path to `codekg.sqlite` (**not** `--db`) |
-| `--lancedb` | ✓ | — | LanceDB output directory |
+| `--sqlite` | | `.codekg/graph.sqlite` | Path to SQLite graph (**not** `--db`) |
+| `--lancedb` | | `.codekg/lancedb` | LanceDB output directory |
 | `--table` | | `codekg_nodes` | LanceDB table name |
 | `--model` | | `all-MiniLM-L6-v2` | Sentence-transformer model |
 | `--wipe` | | false | Delete existing vectors first |
