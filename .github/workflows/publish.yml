@@ -42,4 +42,4 @@ jobs:
           TAG="${{ github.ref_name }}"
           gh release create "$TAG" dist/* \
             --title "CodeKG $TAG" \
-            --generate-notes
+            --notes-file release-notes.md

@@ -206,6 +206,17 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# LaTeX intermediate files
+*.aux
+*.out
+*.log
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
 # CodeKG generated artifacts (derived, rebuildable)
 lancedb/
 codekg_lancedb/
