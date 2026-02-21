@@ -28,6 +28,7 @@ You will analyze staged git changes, update the CHANGELOG.md, and prepare a comm
    - Follows the existing format and style conventions
    - Uses appropriate categories (Added, Changed, Fixed, Removed, etc.)
 4. Update the CHANGELOG.md file with the new entry
+5. **Stage CHANGELOG.md** with `git add CHANGELOG.md` so it is included in the commit
 
 ## Step 3: Create Commit Message
 
@@ -65,6 +66,7 @@ After completing all steps, present:
 ```
 ✓ Analyzed staged changes
 ✓ Updated CHANGELOG.md
+✓ Staged CHANGELOG.md
 ✓ Created commit.txt
 
 Ready to commit with: git commit -F commit.txt

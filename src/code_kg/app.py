@@ -438,11 +438,26 @@ def _build_pyvis(
     panel.style.display = 'block';
   }}
 
+  function fixHtmlTitles() {{
+    // vis-network renders string titles as plain text; swap in DOM elements
+    // so that the rich HTML tooltips display correctly.
+    var ids = network.body.data.nodes.getIds();
+    ids.forEach(function(id) {{
+      var node = network.body.data.nodes.get(id);
+      if (node && typeof node.title === 'string' && node.title.trim().charAt(0) === '<') {{
+        var div = document.createElement('div');
+        div.innerHTML = node.title;
+        network.body.data.nodes.update({{id: id, title: div}});
+      }}
+    }});
+  }}
+
   function waitForNetwork() {{
     if (typeof network === 'undefined') {{
       setTimeout(waitForNetwork, 200);
       return;
     }}
+    fixHtmlTitles();
     network.on('click', function(params) {{
       if (params.nodes && params.nodes.length > 0) {{
         showPanel(String(params.nodes[0]));
