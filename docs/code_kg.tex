@@ -1,5 +1,6 @@
 \documentclass[10pt]{article}
 
+\usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
 \usepackage{setspace}
 \usepackage{hyperref}
@@ -26,10 +27,8 @@
   rulecolor=\color{gray!40},
 }
 
-\title{
-CodeKG: A Deterministic Knowledge Graph for Python Codebases\\
-with Semantic Indexing and Source-Grounded Snippet Packing
-}
+\title{CodeKG: Deterministic Code Navigation via Knowledge Graphs,
+Semantic Indexing, and Grounded Context Packing}
 
 \author{Eric G. Suchanek, PhD\\
 Flux-Frontiers, Liberty Township OH\\
@@ -55,13 +54,20 @@ coordinates the full pipeline and exposes structured result types. A built-in MC
 server makes all query and snippet-packing capabilities available as tools to any
 MCP-compatible AI agent.
 
+A snippet, as used throughout this paper, is a source-grounded code excerpt
+extracted at a verified file path and exact line span, annotated with node
+metadata, and suitable for LLM consumption.
+
 The design treats program structure as ground truth and uses semantic embeddings
 strictly as an acceleration layer. The result is a searchable, traceable
 representation of a codebase that supports precise navigation, contextual snippet
 extraction, and downstream reasoning without hallucination.
 
-When coupled with a downstream language model for synthesis, CodeKG constitutes a
-form of knowledge-graph-augmented generation (KG-RAG). It differs fundamentally
+CodeKG is independently useful without a language model: the built-in graph
+explorer and hybrid query tools provide direct structural navigation and
+visualization of any Python codebase. When coupled with a downstream language
+model for synthesis, CodeKG additionally constitutes a form of
+knowledge-graph-augmented generation (KG-RAG). It differs fundamentally
 from the LLM-constructed graph approach of Microsoft GraphRAG~\cite{edge2024graphrag}:
 the knowledge graph is \emph{derived} from formal syntax rather than \emph{inferred}
 from natural language, making it structurally correct by construction rather than
@@ -188,8 +194,8 @@ objects carrying node ID, embedding distance, and rank.
 
 The \texttt{Embedder} abstract class defines \texttt{embed\_texts(texts)} and
 \texttt{embed\_query(query)}. The default implementation,
-\texttt{SentenceTransformerEmbedder}, uses \texttt{all-MiniLM-L6-v2} from the
-\texttt{sentence-transformers} library (384-dimensional embeddings).
+\texttt{SentenceTransformerEmbedder}, uses \texttt{all-MiniLM-L6-v2}~\cite{wang2020minilm} from the
+\texttt{sentence-transformers} library~\cite{reimers2019sbert} (384-dimensional embeddings).
 
 The vector index is derived from SQLite and is fully disposable. Deleting and
 rebuilding it does not affect the structural record.
@@ -224,7 +230,7 @@ resource management.
 
 Each node represents a concrete program element extracted from the source tree.
 The stable identifier is constructed deterministically from kind, module path, and
-qualified name---for example, \texttt{fn:src/code\_kg/store.py:GraphStore.expand}.
+qualified name---for example, \texttt{fn:src/code\_kg/\allowbreak store.py:\allowbreak GraphStore.expand}.
 This means node IDs are stable across rebuilds as long as the source structure
 does not change.
 
@@ -457,7 +463,7 @@ machine-extracted call-site expression. The LLM's claims are checkable: a node I
 such as \texttt{fn:src/auth/jwt.py:JWTValidator.validate} at line~47 is a precise,
 stable, inspectable address.
 
-We term this \emph{Structural KG-RAG}: knowledge-graph-augmented generation in which
+We term this \emph{Structural KG-RAG}: knowledge-graph-retrieval-augmented generation, in which
 the graph is extracted from formal syntax rather than inferred from natural language,
 and in which every piece of retrieved context has deterministic provenance traceable
 to the source. Table~\ref{tab:comparison} summarises the key distinctions.
@@ -507,7 +513,22 @@ against the source. The result is a form of Structural KG-RAG that combines the
 navigability of natural-language queries with the correctness guarantees of static
 analysis.
 
-\begin{thebibliography}{1}
+\begin{thebibliography}{9}
+
+\bibitem{reimers2019sbert}
+Nils Reimers and Iryna Gurevych.
+\newblock Sentence-{BERT}: Sentence embeddings using siamese {BERT}-networks.
+\newblock In \emph{Proceedings of the 2019 Conference on Empirical Methods in
+  Natural Language Processing (EMNLP)}, 2019.
+\newblock \url{https://arxiv.org/abs/1908.10084}
+
+\bibitem{wang2020minilm}
+Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and Ming Zhou.
+\newblock {MiniLM}: Deep self-attention distillation for task-agnostic
+  compression of pre-trained transformers.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, 2020.
+\newblock \url{https://arxiv.org/abs/2002.10957}
 
 \bibitem{edge2024graphrag}
 Darren Edge, Ha Trinh, Newman Cheng, Joshua Bradley, Alex Chao, Apurva Mody,
