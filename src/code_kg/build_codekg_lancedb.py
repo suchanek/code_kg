@@ -23,14 +23,19 @@ def main() -> None:
         description="Build a LanceDB semantic index from an existing codekg SQLite database."
     )
     p.add_argument(
+        "--repo",
+        default=".",
+        help="Repository root directory (default: current directory)",
+    )
+    p.add_argument(
         "--sqlite",
-        default=".codekg/graph.sqlite",
-        help="Path to graph.sqlite (default: .codekg/graph.sqlite)",
+        default=None,
+        help="Path to graph.sqlite (default: <repo>/.codekg/graph.sqlite)",
     )
     p.add_argument(
         "--lancedb",
-        default=".codekg/lancedb",
-        help="Directory for LanceDB (default: .codekg/lancedb)",
+        default=None,
+        help="Directory for LanceDB (default: <repo>/.codekg/lancedb)",
     )
     p.add_argument("--table", default="codekg_nodes", help="LanceDB table name")
     p.add_argument("--model", default="all-MiniLM-L6-v2", help="SentenceTransformer model name")
@@ -43,12 +48,16 @@ def main() -> None:
     p.add_argument("--batch", type=int, default=256, help="Embedding batch size")
     args = p.parse_args()
 
+    repo = Path(args.repo).resolve()
+    sqlite = Path(args.sqlite) if args.sqlite else repo / ".codekg" / "graph.sqlite"
+    lancedb_dir = Path(args.lancedb) if args.lancedb else repo / ".codekg" / "lancedb"
+
     kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
     embedder = SentenceTransformerEmbedder(args.model)
 
-    store = GraphStore(Path(args.sqlite))
+    store = GraphStore(sqlite)
     idx = SemanticIndex(
-        Path(args.lancedb),
+        lancedb_dir,
         embedder=embedder,
         table=args.table,
         index_kinds=kinds,
