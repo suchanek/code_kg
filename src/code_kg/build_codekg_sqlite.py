@@ -22,8 +22,12 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Extract a code knowledge graph from a Python repo and store it in SQLite."
     )
-    p.add_argument("--repo", required=True, help="Path to repository root")
-    p.add_argument("--db", required=True, help="SQLite database path")
+    p.add_argument("--repo", default=".", help="Path to repository root (default: .)")
+    p.add_argument(
+        "--db",
+        default=".codekg/graph.sqlite",
+        help="SQLite database path (default: .codekg/graph.sqlite)",
+    )
     p.add_argument("--wipe", action="store_true", help="Delete existing graph first")
     args = p.parse_args()
 

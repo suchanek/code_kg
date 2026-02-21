@@ -228,13 +228,13 @@ def _parse_args(argv: list | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--db",
-        default="codekg.sqlite",
-        help="Path to the SQLite knowledge graph (default: codekg.sqlite)",
+        default=".codekg/graph.sqlite",
+        help="Path to the SQLite knowledge graph (default: .codekg/graph.sqlite)",
     )
     p.add_argument(
         "--lancedb",
-        default="./lancedb",
-        help="Path to the LanceDB vector index directory (default: ./lancedb)",
+        default=".codekg/lancedb",
+        help="Path to the LanceDB vector index directory (default: .codekg/lancedb)",
     )
     p.add_argument(
         "--model",

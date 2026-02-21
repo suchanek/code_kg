@@ -365,7 +365,7 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
             for c in ast.iter_child_nodes(p):
                 parent[c] = p
 
-        def enclosing_def(n: ast.AST) -> ast.AST | None:
+        def enclosing_def(n: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
             cur = parent.get(n)
             while cur:
                 if isinstance(cur, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -373,7 +373,7 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
                 cur = parent.get(cur)
             return None
 
-        def owner_id(fn: ast.AST) -> str | None:
+        def owner_id(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
             p = parent.get(fn)
             if isinstance(p, ast.ClassDef):
                 return module_locals[module].get(f"{p.name}.{fn.name}")
@@ -400,9 +400,7 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
                 dst_id = module_locals[module][callee]
             elif callee.startswith("self."):
                 meth = callee.split(".", 1)[1]
-                dst_id = module_class_methods[module].get(meth)
-                if not dst_id:
-                    dst_id = f"sym:{callee}"
+                dst_id = module_class_methods[module].get(meth) or f"sym:{callee}"
             else:
                 dst_id = f"sym:{callee}"
 

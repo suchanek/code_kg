@@ -22,8 +22,16 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Build a LanceDB semantic index from an existing codekg SQLite database."
     )
-    p.add_argument("--sqlite", required=True, help="Path to codekg.sqlite")
-    p.add_argument("--lancedb", required=True, help="Directory for LanceDB")
+    p.add_argument(
+        "--sqlite",
+        default=".codekg/graph.sqlite",
+        help="Path to graph.sqlite (default: .codekg/graph.sqlite)",
+    )
+    p.add_argument(
+        "--lancedb",
+        default=".codekg/lancedb",
+        help="Directory for LanceDB (default: .codekg/lancedb)",
+    )
     p.add_argument("--table", default="codekg_nodes", help="LanceDB table name")
     p.add_argument("--model", default="all-MiniLM-L6-v2", help="SentenceTransformer model name")
     p.add_argument("--wipe", action="store_true", help="Delete existing vectors first")

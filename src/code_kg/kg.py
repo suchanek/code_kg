@@ -570,10 +570,9 @@ class CodeKG:
             span = n.get("_span")
             if not mp or not span:
                 continue
-            lines = file_cache.get(mp)
-            if lines is None:
-                lines = _read_lines(_safe_join(self.repo_root, mp))
-                file_cache[mp] = lines
+            if mp not in file_cache:
+                file_cache[mp] = _read_lines(_safe_join(self.repo_root, mp))
+            lines = file_cache[mp]
             start, end = span
             if end >= start and lines:
                 n["snippet"] = _make_snippet(mp, lines, start, end)

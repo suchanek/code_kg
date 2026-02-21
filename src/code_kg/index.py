@@ -68,7 +68,7 @@ class SentenceTransformerEmbedder(Embedder):
 
         self.model = SentenceTransformer(model_name)
         self.model_name = model_name
-        self.dim: int = self.model.get_sentence_embedding_dimension()
+        self.dim: int = self.model.get_sentence_embedding_dimension() or 384
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         vecs = self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
@@ -267,7 +267,7 @@ class SemanticIndex:
         import lancedb
 
         self.lancedb_dir.mkdir(parents=True, exist_ok=True)
-        db = lancedb.connect(str(self.lancedb_dir))
+        db = lancedb.connect(str(self.lancedb_dir))  # type: ignore[attr-defined]
 
         if self.table_name in db.table_names():
             tbl = db.open_table(self.table_name)
@@ -294,7 +294,7 @@ class SemanticIndex:
         if self._tbl is None:
             import lancedb
 
-            db = lancedb.connect(str(self.lancedb_dir))
+            db = lancedb.connect(str(self.lancedb_dir))  # type: ignore[attr-defined]
             self._tbl = db.open_table(self.table_name)
         return self._tbl
 
