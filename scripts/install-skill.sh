@@ -130,16 +130,7 @@ LOCAL_SKILL="${REPO_ROOT:+${REPO_ROOT}/.claude/skills/codekg/SKILL.md}"
 # The target repo is where the user ran the script from (CWD).
 TARGET_REPO="${PWD}"
 SQLITE_DB="${TARGET_REPO}/.codekg/graph.sqlite"
-# Prefer .codekg/ (current layout); fall back to legacy paths for older installs
-if [ -d "${TARGET_REPO}/.codekg/lancedb" ]; then
-    LANCEDB_DIR="${TARGET_REPO}/.codekg/lancedb"
-elif [ -d "${TARGET_REPO}/codekg_lancedb" ]; then
-    LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
-elif [ -d "${TARGET_REPO}/lancedb" ]; then
-    LANCEDB_DIR="${TARGET_REPO}/lancedb"
-else
-    LANCEDB_DIR="${TARGET_REPO}/.codekg/lancedb"
-fi
+LANCEDB_DIR="${TARGET_REPO}/.codekg/lancedb"
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║       CodeKG Integration Installer               ║"
