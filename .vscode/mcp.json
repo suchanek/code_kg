@@ -6,8 +6,8 @@
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/Users/egs/repos/code_kg",
-        "--db",      "/Users/egs/repos/code_kg/codekg.sqlite",
-        "--lancedb", "/Users/egs/repos/code_kg/lancedb"
+        "--db",      "/Users/egs/repos/code_kg/.codekg/graph.sqlite",
+        "--lancedb", "/Users/egs/repos/code_kg/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"

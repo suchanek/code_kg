@@ -281,8 +281,8 @@ class CodeKG:
 
         kg = CodeKG(
             repo_root="/path/to/repo",
-            db_path="codekg.sqlite",
-            lancedb_dir="./lancedb",
+            db_path=".codekg/graph.sqlite",
+            lancedb_dir=".codekg/lancedb",
         )
         stats = kg.build(wipe=True)
         print(stats)

@@ -52,8 +52,8 @@ explore the codebase structure before writing or modifying code.
 If the codebase has changed significantly, rebuild with:
 
 ```bash
-poetry run codekg-build-sqlite  --repo . --db codekg.sqlite --wipe
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb --wipe
+poetry run codekg-build-sqlite  --repo . --db .codekg/graph.sqlite --wipe
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb --wipe
 ```
 
 ### Cline MCP config
@@ -70,8 +70,8 @@ Add a named entry for each repo:
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"

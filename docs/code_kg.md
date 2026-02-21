@@ -110,7 +110,7 @@ The repository is parsed using Python’s `ast` module:
 - Generate normalized node IDs
 - Emit explicit edges with evidence
 
-**Output:** a single SQLite database (`codekg.sqlite`) with:
+**Output:** a single SQLite database (`.codekg/graph.sqlite`) with:
 
 - `nodes` table
 - `edges` table

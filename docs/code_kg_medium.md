@@ -118,12 +118,11 @@ Everything is independently testable. The graph layer doesn't know about embeddi
 poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
 
 # Build the knowledge graph
-poetry run codekg-build-sqlite  --repo . --db codekg.sqlite
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
+poetry run codekg-build-sqlite  --repo .
+poetry run codekg-build-lancedb
 
 # Run a query
-poetry run codekg-query --sqlite codekg.sqlite --lancedb ./lancedb \
-  --q "database connection setup"
+poetry run codekg-query --q "database connection setup"
 ```
 
 Or use the Streamlit app (`codekg-viz`) for an interactive graph browser with point-and-click queries and snippet extraction.

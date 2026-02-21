@@ -28,8 +28,8 @@ Once configured, the agent gains four tools:
 poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
 
 # 2. Build the knowledge graph
-poetry run codekg-build-sqlite  --repo . --db codekg.sqlite
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
+poetry run codekg-build-sqlite  --repo . --db .codekg/graph.sqlite
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 
 # 3. Add per-repo config for your agent (see Section 4–6)
 #    • Claude Code / Kilo Code → .mcp.json
@@ -143,24 +143,24 @@ The MCP server is **read-only**. Two artifacts must be built before starting the
 
 | Artifact | Built by | Contains |
 |---|---|---|
-| `codekg.sqlite` | `codekg-build-sqlite` | AST-extracted nodes and edges |
-| `lancedb/` | `codekg-build-lancedb` | Sentence-transformer vector embeddings |
+| `.codekg/graph.sqlite` | `codekg-build-sqlite` | AST-extracted nodes and edges |
+| `.codekg/lancedb/` | `codekg-build-lancedb` | Sentence-transformer vector embeddings |
 
 ### Step 1 — Static analysis: repo → SQLite
 
 ```bash
 poetry run codekg-build-sqlite \
   --repo /absolute/path/to/repo \
-  --db   /absolute/path/to/repo/codekg.sqlite
+  --db   /absolute/path/to/repo/.codekg/graph.sqlite
 ```
 
 Add `--wipe` to rebuild from scratch (safe to re-run):
 
 ```bash
-poetry run codekg-build-sqlite --repo . --db codekg.sqlite --wipe
+poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite --wipe
 ```
 
-**Output:** `OK: nodes=<N> edges=<M> db=codekg.sqlite`
+**Output:** `OK: nodes=<N> edges=<M> db=.codekg/graph.sqlite`
 
 ### Step 2 — Semantic indexing: SQLite → LanceDB
 
@@ -168,17 +168,17 @@ poetry run codekg-build-sqlite --repo . --db codekg.sqlite --wipe
 
 ```bash
 poetry run codekg-build-lancedb \
-  --sqlite /absolute/path/to/repo/codekg.sqlite \
-  --lancedb /absolute/path/to/repo/lancedb
+  --sqlite  /absolute/path/to/repo/.codekg/graph.sqlite \
+  --lancedb /absolute/path/to/repo/.codekg/lancedb
 ```
 
 Add `--wipe` to rebuild the vector index:
 
 ```bash
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb --wipe
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb --wipe
 ```
 
-**Output:** `OK: indexed_rows=<V> dim=384 table=codekg_nodes lancedb_dir=./lancedb kinds=module,class,function,method`
+**Output:** `OK: indexed_rows=<V> dim=384 table=codekg_nodes lancedb_dir=.codekg/lancedb kinds=module,class,function,method`
 
 Both steps are idempotent. Re-run them whenever the codebase changes significantly.
 
@@ -196,7 +196,7 @@ Both steps are idempotent. Re-run them whenever the codebase changes significant
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--sqlite` | ✓ | — | Path to `codekg.sqlite` |
+| `--sqlite` | ✓ | — | Path to the SQLite graph |
 | `--lancedb` | ✓ | — | LanceDB output directory |
 | `--table` | | `codekg_nodes` | LanceDB table name |
 | `--model` | | `all-MiniLM-L6-v2` | Sentence-transformer model |
@@ -215,14 +215,14 @@ Before configuring any agent, verify the full pipeline works end-to-end:
 poetry run python -c "
 from code_kg import CodeKG
 import json
-kg = CodeKG(repo_root='.', db_path='codekg.sqlite', lancedb_dir='./lancedb')
+kg = CodeKG(repo_root='.', db_path='.codekg/graph.sqlite', lancedb_dir='.codekg/lancedb')
 print(json.dumps(kg.stats(), indent=2))
 "
 
 # Run a sample query
 poetry run codekg-query \
-  --sqlite codekg.sqlite \
-  --lancedb ./lancedb \
+  --sqlite .codekg/graph.sqlite \
+  --lancedb .codekg/lancedb \
   --q "module structure"
 ```
 
@@ -234,7 +234,7 @@ Expected output from `kg.stats()`:
   "total_edges": 1087,
   "node_counts": { "module": 18, "class": 34, "function": 201, "method": 143 },
   "edge_counts": { "CONTAINS": 378, "CALLS": 512, "IMPORTS": 147, "INHERITS": 50 },
-  "db_path": "codekg.sqlite"
+  "db_path": ".codekg/graph.sqlite"
 }
 ```
 
@@ -258,8 +258,8 @@ Both **Claude Code** and **Kilo Code** read MCP servers from `.mcp.json` in the 
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -286,8 +286,8 @@ If you already have other MCP servers configured (e.g. `copilot-memory`, `skills
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -322,8 +322,8 @@ GitHub Copilot in VS Code reads MCP servers from `.vscode/mcp.json` in the **wor
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -370,8 +370,8 @@ Add the `codekg` entry:
       "command": "/Users/you/Library/Caches/pypoetry/virtualenvs/my-project-abc123-py3.11/bin/codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -408,8 +408,8 @@ Add a repo-specific named entry:
       "command": "/path/to/venv/bin/codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/myproject",
-        "--db",      "/absolute/path/to/myproject/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/myproject/lancedb"
+        "--db",      "/absolute/path/to/myproject/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/myproject/.codekg/lancedb"
       ]
     }
   }
@@ -490,8 +490,8 @@ The command runs six steps automatically:
 
 ```
 ✓ Repository indexed:    /path/to/repo
-✓ SQLite graph:          /path/to/repo/codekg.sqlite  (412 nodes, 1087 edges)
-✓ LanceDB index:         /path/to/repo/lancedb  (378 vectors)
+✓ SQLite graph:          /path/to/repo/.codekg/graph.sqlite  (412 nodes, 1087 edges)
+✓ LanceDB index:         /path/to/repo/.codekg/lancedb  (378 vectors)
 ✓ Smoke test:            passed
 ✓ Claude Code config:    /path/to/repo/.mcp.json
 ✓ Claude Desktop config: ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -536,8 +536,9 @@ your-project/
 │   │   ├── continue.md          ← /continue command
 │   │   └── setup-mcp.md         ← /setup-mcp command
 │   └── skills/                  ← Local skills (empty until populated)
-├── codekg.sqlite                ← Knowledge graph (gitignored)
-└── lancedb/                     ← Vector index (gitignored)
+├── .codekg/                     ← Knowledge graph + index (gitignored)
+│   ├── graph.sqlite
+│   └── lancedb/
 ```
 
 ### Recommended `.mcp.json` with full Copilot stack
@@ -573,8 +574,8 @@ your-project/
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/your-project",
-        "--db",      "/absolute/path/to/your-project/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/your-project/lancedb"
+        "--db",      "/absolute/path/to/your-project/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/your-project/.codekg/lancedb"
       ]
     }
   }
@@ -626,7 +627,7 @@ Return node and edge counts broken down by kind and relation.
   "edge_counts": {
     "CONTAINS": 378, "CALLS": 512, "IMPORTS": 147, "INHERITS": 50
   },
-  "db_path": "codekg.sqlite"
+  "db_path": ".codekg/graph.sqlite"
 }
 ```
 
@@ -748,8 +749,8 @@ Higher `hop` values expand the result set geometrically. Use `max_nodes` in `pac
 When the codebase changes, rebuild both artifacts (safe to re-run, idempotent):
 
 ```bash
-poetry run codekg-build-sqlite  --repo . --db codekg.sqlite --wipe
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb --wipe
+poetry run codekg-build-sqlite  --repo . --db .codekg/graph.sqlite --wipe
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb --wipe
 ```
 
 The `.mcp.json` and `claude_desktop_config.json` entries do not need to change — they point to the same file paths.
@@ -759,10 +760,7 @@ The `.mcp.json` and `claude_desktop_config.json` entries do not need to change �
 Add these to `.gitignore` to avoid committing large binary artifacts:
 
 ```gitignore
-codekg.sqlite
-codekg.sqlite-shm
-codekg.sqlite-wal
-lancedb/
+.codekg/
 ```
 
 ---
@@ -789,7 +787,7 @@ lancedb/
 | Concern | Answer |
 |---|---|
 | What does the MCP server expose? | 4 tools: `graph_stats`, `query_codebase`, `pack_snippets`, `get_node` |
-| What must exist before starting? | `codekg.sqlite` + `lancedb/` directory |
+| What must exist before starting? | `.codekg/graph.sqlite` + `.codekg/lancedb/` directory |
 | How do I build those? | `codekg-build-sqlite` then `codekg-build-lancedb --sqlite ...` |
 | Is the server stateful? | Yes — one `CodeKG` instance per server process |
 | Can it modify the graph? | No — strictly read-only |
