@@ -236,7 +236,7 @@ codekg-build-sqlite --repo /path/to/repo --db codekg.sqlite [--wipe]
 ### 2. Build the LanceDB semantic index
 
 ```bash
-codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb_dir [--model all-MiniLM-L6-v2] [--wipe]
+codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb [--model all-MiniLM-L6-v2] [--wipe]
 ```
 
 ### 3. Run a hybrid query
@@ -244,7 +244,7 @@ codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb_dir [--model all
 ```bash
 codekg-query \
   --sqlite codekg.sqlite \
-  --lancedb ./lancedb_dir \
+  --lancedb ./lancedb \
   --q "database connection setup" \
   --k 8 \
   --hop 1
@@ -256,7 +256,7 @@ codekg-query \
 codekg-pack \
   --repo-root /path/to/repo \
   --sqlite codekg.sqlite \
-  --lancedb ./lancedb_dir \
+  --lancedb ./lancedb \
   --q "configuration loading" \
   --k 8 \
   --hop 1 \
@@ -388,7 +388,7 @@ Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `com
       "args": [
         "--repo",    "/absolute/path/to/repo",
         "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/codekg_lancedb"
+        "--lancedb", "/absolute/path/to/lancedb"
       ]
     }
   }
@@ -413,7 +413,7 @@ GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key,
         "--db",
         "/absolute/path/to/codekg.sqlite",
         "--lancedb",
-        "/absolute/path/to/codekg_lancedb"
+        "/absolute/path/to/lancedb"
       ]
     }
   }

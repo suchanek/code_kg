@@ -218,9 +218,8 @@ __marimo__/
 *.synctex.gz
 
 # CodeKG generated artifacts (derived, rebuildable)
-lancedb/
-codekg_lancedb/
-*.sqlite
-*.sqlite-wal
-*.sqlite-shm
+.codekg/
 .DS_Store
+
+# Local MCP configuration (contains absolute paths)
+.mcp.json

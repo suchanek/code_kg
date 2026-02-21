@@ -24,11 +24,19 @@ def main() -> None:
     )
     p.add_argument(
         "--repo-root",
-        required=True,
-        help="Root of the source tree used to build the KG (for snippets)",
+        default=".",
+        help="Root of the source tree used to build the KG (default: .)",
     )
-    p.add_argument("--sqlite", required=True, help="Path to codekg.sqlite")
-    p.add_argument("--lancedb", required=True, help="LanceDB directory")
+    p.add_argument(
+        "--sqlite",
+        default=".codekg/graph.sqlite",
+        help="Path to graph.sqlite (default: .codekg/graph.sqlite)",
+    )
+    p.add_argument(
+        "--lancedb",
+        default=".codekg/lancedb",
+        help="LanceDB directory (default: .codekg/lancedb)",
+    )
     p.add_argument("--table", default="codekg_nodes", help="LanceDB table name")
     p.add_argument(
         "--model",
