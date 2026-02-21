@@ -306,4 +306,3 @@ Route to @agent-uxd with message: "See handoff context in agent_chain_get('TASK-
 - **@agent-uxd** — When service blueprint is ready for interaction design (use handoff protocol)
 - **@agent-ta** — When service design reveals technical architecture needs
 - **@agent-cw** — When journey stages need user-facing copy
-

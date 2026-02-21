@@ -17,14 +17,12 @@ from code_kg.kg import (
     BuildStats,
     CodeKG,
     QueryResult,
-    Snippet,
     SnippetPack,
     _compute_span,
     _make_snippet,
     _safe_join,
     _spans_overlap,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -193,9 +191,18 @@ def test_queryresult_to_dict():
         returned_nodes=5,
         hop=1,
         rels=["CONTAINS", "CALLS"],
-        nodes=[{"id": "fn:mod.py:foo", "kind": "function", "name": "foo",
-                "qualname": "foo", "module_path": "mod.py",
-                "lineno": 1, "end_lineno": 3, "docstring": None}],
+        nodes=[
+            {
+                "id": "fn:mod.py:foo",
+                "kind": "function",
+                "name": "foo",
+                "qualname": "foo",
+                "module_path": "mod.py",
+                "lineno": 1,
+                "end_lineno": 3,
+                "docstring": None,
+            }
+        ],
         edges=[],
     )
     d = qr.to_dict()
@@ -206,8 +213,14 @@ def test_queryresult_to_dict():
 
 def test_queryresult_to_json():
     qr = QueryResult(
-        query="test", seeds=1, expanded_nodes=2, returned_nodes=1,
-        hop=1, rels=["CALLS"], nodes=[], edges=[],
+        query="test",
+        seeds=1,
+        expanded_nodes=2,
+        returned_nodes=1,
+        hop=1,
+        rels=["CALLS"],
+        nodes=[],
+        edges=[],
     )
     text = qr.to_json()
     parsed = json.loads(text)
@@ -221,9 +234,15 @@ def test_queryresult_to_json():
 
 def test_snippetpack_to_dict():
     sp = SnippetPack(
-        query="q", seeds=1, expanded_nodes=2, returned_nodes=1,
-        hop=1, rels=["CALLS"], model="all-MiniLM-L6-v2",
-        nodes=[], edges=[],
+        query="q",
+        seeds=1,
+        expanded_nodes=2,
+        returned_nodes=1,
+        hop=1,
+        rels=["CALLS"],
+        model="all-MiniLM-L6-v2",
+        nodes=[],
+        edges=[],
     )
     d = sp.to_dict()
     assert d["model"] == "all-MiniLM-L6-v2"
@@ -231,9 +250,15 @@ def test_snippetpack_to_dict():
 
 def test_snippetpack_to_json():
     sp = SnippetPack(
-        query="q", seeds=1, expanded_nodes=2, returned_nodes=1,
-        hop=1, rels=["CALLS"], model="all-MiniLM-L6-v2",
-        nodes=[], edges=[],
+        query="q",
+        seeds=1,
+        expanded_nodes=2,
+        returned_nodes=1,
+        hop=1,
+        rels=["CALLS"],
+        model="all-MiniLM-L6-v2",
+        nodes=[],
+        edges=[],
     )
     text = sp.to_json()
     assert json.loads(text)["query"] == "q"
@@ -241,14 +266,30 @@ def test_snippetpack_to_json():
 
 def test_snippetpack_to_markdown_contains_query():
     sp = SnippetPack(
-        query="find the thing", seeds=2, expanded_nodes=5, returned_nodes=2,
-        hop=1, rels=["CONTAINS"], model="all-MiniLM-L6-v2",
+        query="find the thing",
+        seeds=2,
+        expanded_nodes=5,
+        returned_nodes=2,
+        hop=1,
+        rels=["CONTAINS"],
+        model="all-MiniLM-L6-v2",
         nodes=[
-            {"id": "fn:mod.py:foo", "kind": "function", "name": "foo",
-             "qualname": "foo", "module_path": "mod.py",
-             "lineno": 1, "end_lineno": 3, "docstring": "Does foo.",
-             "snippet": {"path": "mod.py", "start": 1, "end": 3,
-                         "text": "    1: def foo():\n    2:     pass"}},
+            {
+                "id": "fn:mod.py:foo",
+                "kind": "function",
+                "name": "foo",
+                "qualname": "foo",
+                "module_path": "mod.py",
+                "lineno": 1,
+                "end_lineno": 3,
+                "docstring": "Does foo.",
+                "snippet": {
+                    "path": "mod.py",
+                    "start": 1,
+                    "end": 3,
+                    "text": "    1: def foo():\n    2:     pass",
+                },
+            },
         ],
         edges=[],
     )
@@ -260,8 +301,15 @@ def test_snippetpack_to_markdown_contains_query():
 
 def test_snippetpack_save_md(tmp_path):
     sp = SnippetPack(
-        query="q", seeds=1, expanded_nodes=1, returned_nodes=1,
-        hop=1, rels=[], model="m", nodes=[], edges=[],
+        query="q",
+        seeds=1,
+        expanded_nodes=1,
+        returned_nodes=1,
+        hop=1,
+        rels=[],
+        model="m",
+        nodes=[],
+        edges=[],
     )
     out = tmp_path / "out.md"
     sp.save(out, fmt="md")
@@ -271,8 +319,15 @@ def test_snippetpack_save_md(tmp_path):
 
 def test_snippetpack_save_json(tmp_path):
     sp = SnippetPack(
-        query="q", seeds=1, expanded_nodes=1, returned_nodes=1,
-        hop=1, rels=[], model="m", nodes=[], edges=[],
+        query="q",
+        seeds=1,
+        expanded_nodes=1,
+        returned_nodes=1,
+        hop=1,
+        rels=[],
+        model="m",
+        nodes=[],
+        edges=[],
     )
     out = tmp_path / "out.json"
     sp.save(out, fmt="json")
@@ -303,8 +358,8 @@ def test_compute_span_module():
 
 def test_compute_span_function_with_ast_span():
     start, end = _compute_span("function", 10, 20, context=3, max_lines=100, file_nlines=200)
-    assert start == 7   # 10 - 3
-    assert end == 23    # 20 + 3
+    assert start == 7  # 10 - 3
+    assert end == 23  # 20 + 3
 
 
 def test_compute_span_caps_at_max_lines():

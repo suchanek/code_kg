@@ -7,6 +7,7 @@ Usage:
 
 Launches `streamlit run app.py` from the package root.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -17,9 +18,7 @@ from pathlib import Path
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Launch the CodeKG Streamlit visualizer."
-    )
+    parser = argparse.ArgumentParser(description="Launch the CodeKG Streamlit visualizer.")
     parser.add_argument(
         "--db",
         default="codekg.sqlite",
@@ -46,18 +45,22 @@ def main() -> None:
 
     if not app_path.exists():
         print(
-            f"ERROR: Could not find app.py. "
-            f"Run codekg-viz from the code_kg repository root.",
+            "ERROR: Could not find app.py. Run codekg-viz from the code_kg repository root.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     cmd = [
-        sys.executable, "-m", "streamlit", "run",
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
         str(app_path),
-        "--server.port", args.port,
+        "--server.port",
+        args.port,
         "--",
-        "--db", args.db,
+        "--db",
+        args.db,
     ]
     if args.no_browser:
         cmd[4:4] = ["--server.headless", "true"]

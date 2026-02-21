@@ -380,4 +380,3 @@ Next Steps: <what agent should be invoked next>
 - **@agent-qa** — When task breakdown needs test strategy
 - **@agent-sec** — When architecture involves security considerations
 - **@agent-do** — When architecture requires infrastructure changes
-

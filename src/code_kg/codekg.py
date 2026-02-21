@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import ast
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
 
 # ============================================================================
 # Graph primitives (LOCKED v0 CONTRACT)
@@ -47,11 +47,11 @@ class Node:
     id: str
     kind: str
     name: str
-    qualname: Optional[str]
-    module_path: Optional[str]
-    lineno: Optional[int]
-    end_lineno: Optional[int]
-    docstring: Optional[str]
+    qualname: str | None
+    module_path: str | None
+    lineno: int | None
+    end_lineno: int | None
+    docstring: str | None
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class Edge:
     src: str
     rel: str
     dst: str
-    evidence: Optional[dict] = None
+    evidence: dict | None = None
 
 
 # ============================================================================
@@ -116,7 +116,7 @@ def rel_module_path(path: Path, repo_root: Path) -> str:
     return str(path.relative_to(repo_root)).replace("\\", "/")
 
 
-def node_id(kind: str, module: str, qualname: Optional[str]) -> str:
+def node_id(kind: str, module: str, qualname: str | None) -> str:
     """
     Construct stable node id.
 
@@ -137,7 +137,7 @@ def node_id(kind: str, module: str, qualname: Optional[str]) -> str:
     return f"{prefix}:{module}:{qualname}" if qualname else f"{prefix}:{module}"
 
 
-def expr_to_name(expr: ast.AST) -> Optional[str]:
+def expr_to_name(expr: ast.AST) -> str | None:
     """
     Convert AST expression to dotted name (best effort).
 
@@ -160,7 +160,7 @@ def expr_to_name(expr: ast.AST) -> Optional[str]:
 # ============================================================================
 
 
-def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
+def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
     """
     Extract a code knowledge graph from a repository.
 
@@ -172,15 +172,15 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
     :param repo_root: Path to repository root
     :return: (nodes, edges)
     """
-    nodes: Dict[str, Node] = {}
-    edges: Dict[Tuple[str, str, str], Edge] = {}
+    nodes: dict[str, Node] = {}
+    edges: dict[tuple[str, str, str], Edge] = {}
 
     # ------------------------------------------------------------------
     # PASS 1: modules, classes, functions, methods
     # ------------------------------------------------------------------
 
-    module_locals: Dict[str, Dict[str, str]] = {}
-    module_class_methods: Dict[str, Dict[str, str]] = {}
+    module_locals: dict[str, dict[str, str]] = {}
+    module_class_methods: dict[str, dict[str, str]] = {}
 
     for pyfile in iter_python_files(repo_root):
         module = rel_module_path(pyfile, repo_root)
@@ -209,7 +209,6 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
 
         # traverse module body only (NOT ast.walk)
         for stmt in tree.body:
-
             # --------------------
             # class definitions
             # --------------------
@@ -264,7 +263,7 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
 
                 # methods
                 for cstmt in stmt.body:
-                    if isinstance(cstmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if isinstance(cstmt, ast.FunctionDef | ast.AsyncFunctionDef):
                         m_qn = f"{stmt.name}.{cstmt.name}"
                         m_id = node_id("method", module, m_qn)
 
@@ -291,7 +290,7 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
             # --------------------
             # top-level functions
             # --------------------
-            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            elif isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
                 fn_qn = stmt.name
                 fn_id = node_id("function", module, fn_qn)
 
@@ -348,9 +347,7 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
                     sym_id = f"sym:{full}"
                     nodes.setdefault(
                         sym_id,
-                        Node(
-                            sym_id, "symbol", alias.name, full, None, None, None, None
-                        ),
+                        Node(sym_id, "symbol", alias.name, full, None, None, None, None),
                     )
                     edges[(mod_id, "IMPORTS", sym_id)] = Edge(
                         src=mod_id,
@@ -363,20 +360,20 @@ def extract_repo(repo_root: Path) -> Tuple[List[Node], List[Edge]]:
         # PASS 2: call graph (best-effort, honest)
         # ------------------------------------------------------------------
 
-        parent: Dict[ast.AST, ast.AST] = {}
+        parent: dict[ast.AST, ast.AST] = {}
         for p in ast.walk(tree):
             for c in ast.iter_child_nodes(p):
                 parent[c] = p
 
-        def enclosing_def(n: ast.AST) -> Optional[ast.AST]:
+        def enclosing_def(n: ast.AST) -> ast.AST | None:
             cur = parent.get(n)
             while cur:
-                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if isinstance(cur, ast.FunctionDef | ast.AsyncFunctionDef):
                     return cur
                 cur = parent.get(cur)
             return None
 
-        def owner_id(fn: ast.AST) -> Optional[str]:
+        def owner_id(fn: ast.AST) -> str | None:
             p = parent.get(fn)
             if isinstance(p, ast.ClassDef):
                 return module_locals[module].get(f"{p.name}.{fn.name}")

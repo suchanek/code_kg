@@ -16,9 +16,8 @@ Author: Eric G. Suchanek, PhD
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from code_kg.graph import CodeGraph
 from code_kg.index import Embedder, SemanticIndex, SentenceTransformerEmbedder
@@ -55,10 +54,10 @@ class BuildStats:
     db_path: str
     total_nodes: int
     total_edges: int
-    node_counts: Dict[str, int]
-    edge_counts: Dict[str, int]
-    indexed_rows: Optional[int] = None
-    index_dim: Optional[int] = None
+    node_counts: dict[str, int]
+    edge_counts: dict[str, int]
+    indexed_rows: int | None = None
+    index_dim: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -80,9 +79,7 @@ class BuildStats:
             f"edges       : {self.total_edges}  {self.edge_counts}",
         ]
         if self.indexed_rows is not None:
-            lines.append(
-                f"indexed     : {self.indexed_rows} vectors  dim={self.index_dim}"
-            )
+            lines.append(f"indexed     : {self.indexed_rows} vectors  dim={self.index_dim}")
         return "\n".join(lines)
 
 
@@ -106,9 +103,9 @@ class QueryResult:
     expanded_nodes: int
     returned_nodes: int
     hop: int
-    rels: List[str]
-    nodes: List[dict]
-    edges: List[dict]
+    rels: list[str]
+    nodes: list[dict]
+    edges: list[dict]
 
     def to_dict(self) -> dict:
         return {
@@ -195,10 +192,10 @@ class SnippetPack:
     expanded_nodes: int
     returned_nodes: int
     hop: int
-    rels: List[str]
+    rels: list[str]
     model: str
-    nodes: List[dict]
-    edges: List[dict]
+    nodes: list[dict]
+    edges: list[dict]
 
     def to_dict(self) -> dict:
         return {
@@ -219,14 +216,11 @@ class SnippetPack:
 
     def to_markdown(self) -> str:
         """Render as a Markdown context pack."""
-        out: List[str] = []
+        out: list[str] = []
         out.append("# CodeKG Snippet Pack\n")
         out.append(f"**Query:** `{self.query}`  ")
         out.append(f"**Seeds:** {self.seeds}  ")
-        out.append(
-            f"**Expanded nodes:** {self.expanded_nodes} "
-            f"(returned: {self.returned_nodes})  "
-        )
+        out.append(f"**Expanded nodes:** {self.expanded_nodes} (returned: {self.returned_nodes})  ")
         out.append(f"**hop:** {self.hop}  ")
         out.append(f"**rels:** {', '.join(self.rels)}  ")
         out.append(f"**model:** {self.model}  ")
@@ -322,10 +316,10 @@ class CodeKG:
         self.table_name = table
 
         # Lazy-initialised layers
-        self._graph: Optional[CodeGraph] = None
-        self._store: Optional[GraphStore] = None
-        self._index: Optional[SemanticIndex] = None
-        self._embedder: Optional[Embedder] = None
+        self._graph: CodeGraph | None = None
+        self._store: GraphStore | None = None
+        self._index: SemanticIndex | None = None
+        self._embedder: Embedder | None = None
 
     # ------------------------------------------------------------------
     # Layer accessors (lazy init)
@@ -429,7 +423,7 @@ class CodeKG:
         *,
         k: int = 8,
         hop: int = 1,
-        rels: Tuple[str, ...] = DEFAULT_RELS,
+        rels: tuple[str, ...] = DEFAULT_RELS,
         include_symbols: bool = False,
     ) -> QueryResult:
         """
@@ -443,13 +437,13 @@ class CodeKG:
         :return: :class:`QueryResult`.
         """
         hits = self.index.search(q, k=k)
-        seed_ids: Set[str] = {h.id for h in hits}
+        seed_ids: set[str] = {h.id for h in hits}
 
         meta = self.store.expand(seed_ids, hop=hop, rels=rels)
         all_ids = set(meta.keys())
 
-        nodes: List[dict] = []
-        kept_ids: Set[str] = set()
+        nodes: list[dict] = []
+        kept_ids: set[str] = set()
         for nid in sorted(all_ids):
             n = self.store.node(nid)
             if not n:
@@ -482,7 +476,7 @@ class CodeKG:
         *,
         k: int = 8,
         hop: int = 1,
-        rels: Tuple[str, ...] = DEFAULT_RELS,
+        rels: tuple[str, ...] = DEFAULT_RELS,
         include_symbols: bool = False,
         context: int = 5,
         max_lines: int = 160,
@@ -502,16 +496,14 @@ class CodeKG:
         :return: :class:`SnippetPack`.
         """
         hits = self.index.search(q, k=k)
-        seed_rank: Dict[str, dict] = {
-            h.id: {"rank": h.rank, "dist": h.distance} for h in hits
-        }
-        seed_ids: Set[str] = set(seed_rank.keys())
+        seed_rank: dict[str, dict] = {h.id: {"rank": h.rank, "dist": h.distance} for h in hits}
+        seed_ids: set[str] = set(seed_rank.keys())
 
         meta = self.store.expand(seed_ids, hop=hop, rels=rels)
         all_ids = set(meta.keys())
 
         # Materialise + annotate nodes
-        raw_nodes: List[dict] = []
+        raw_nodes: list[dict] = []
         for nid in sorted(all_ids):
             n = self.store.node(nid)
             if not n:
@@ -528,7 +520,7 @@ class CodeKG:
             raw_nodes.append(n)
 
         # Attach spans (needed for dedup)
-        file_cache: Dict[str, List[str]] = {}
+        file_cache: dict[str, list[str]] = {}
         for n in raw_nodes:
             mp = n.get("module_path")
             if not mp:
@@ -550,8 +542,8 @@ class CodeKG:
         raw_nodes.sort(key=lambda x: x["_rank_key"])
 
         # Deduplicate by file + overlapping span
-        kept: List[dict] = []
-        kept_by_file: Dict[str, List[Tuple[Tuple[int, int], str]]] = {}
+        kept: list[dict] = []
+        kept_by_file: dict[str, list[tuple[tuple[int, int], str]]] = {}
 
         for n in raw_nodes:
             if len(kept) >= max_nodes:
@@ -569,7 +561,7 @@ class CodeKG:
             kept.append(n)
             kept_by_file.setdefault(mp, []).append((span, n["id"]))
 
-        kept_ids: Set[str] = {n["id"] for n in kept}
+        kept_ids: set[str] = {n["id"] for n in kept}
         edges = self.store.edges_within(kept_ids)
 
         # Attach snippets
@@ -611,7 +603,7 @@ class CodeKG:
         """Return store statistics (node/edge counts by kind/relation)."""
         return self.store.stats()
 
-    def node(self, node_id: str) -> Optional[dict]:
+    def node(self, node_id: str) -> dict | None:
         """Fetch a single node by ID from the store."""
         return self.store.node(node_id)
 
@@ -620,7 +612,7 @@ class CodeKG:
         if self._store is not None:
             self._store.close()
 
-    def __enter__(self) -> "CodeKG":
+    def __enter__(self) -> CodeKG:
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -648,7 +640,7 @@ def _safe_join(repo_root: Path, rel_path: str) -> Path:
     return p
 
 
-def _read_lines(path: Path) -> List[str]:
+def _read_lines(path: Path) -> list[str]:
     try:
         return path.read_text(encoding="utf-8").splitlines()
     except UnicodeDecodeError:
@@ -659,13 +651,13 @@ def _read_lines(path: Path) -> List[str]:
 
 def _compute_span(
     kind: str,
-    lineno: Optional[int],
-    end_lineno: Optional[int],
+    lineno: int | None,
+    end_lineno: int | None,
     *,
     context: int,
     max_lines: int,
     file_nlines: int,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     if file_nlines <= 0:
         return (1, 0)
     if kind == "module":
@@ -685,17 +677,15 @@ def _compute_span(
     return (start, end)
 
 
-def _make_snippet(rel_path: str, lines: List[str], start: int, end: int) -> dict:
+def _make_snippet(rel_path: str, lines: list[str], start: int, end: int) -> dict:
     s0 = max(0, start - 1)
     e0 = max(0, end)
     chunk = lines[s0:e0]
-    numbered = "\n".join(
-        f"{i:>5d}: {line}" for i, line in enumerate(chunk, start=start)
-    )
+    numbered = "\n".join(f"{i:>5d}: {line}" for i, line in enumerate(chunk, start=start))
     return {"path": rel_path, "start": start, "end": end, "text": numbered}
 
 
-def _spans_overlap(a: Tuple[int, int], b: Tuple[int, int], gap: int = 2) -> bool:
+def _spans_overlap(a: tuple[int, int], b: tuple[int, int], gap: int = 2) -> bool:
     a0, a1 = a
     b0, b1 = b
     return not (a1 + gap < b0 or b1 + gap < a0)

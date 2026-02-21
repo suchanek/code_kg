@@ -249,4 +249,3 @@ Next Steps: <what needs remediation>
 - **@agent-me** — When vulnerabilities need code fixes
 - **@agent-ta** — When security issues require architectural changes
 - **@agent-do** — When security requires infrastructure/deployment changes
-

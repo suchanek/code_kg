@@ -404,4 +404,3 @@ Follow same handoff protocol as other agents.
 
 - **@agent-qa** — When UI components need accessibility and visual regression testing
 - **@agent-me** — When UI implementation reveals backend integration needs
-

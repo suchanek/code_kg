@@ -38,9 +38,7 @@ def main() -> None:
         default=",".join(DEFAULT_RELS),
         help="Comma-separated edge types to expand",
     )
-    p.add_argument(
-        "--include-symbols", action="store_true", help="Include symbol nodes in output"
-    )
+    p.add_argument("--include-symbols", action="store_true", help="Include symbol nodes in output")
     # repo_root is not needed for query-only; use db_path as a stand-in
     args = p.parse_args()
 

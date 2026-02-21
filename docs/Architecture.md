@@ -1,6 +1,6 @@
 # CodeKG Architecture
 
-**CodeKG v0** — A Deterministic Knowledge Graph for Python Codebases  
+**CodeKG v0** — A Deterministic Knowledge Graph for Python Codebases
 with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Author: Eric G. Suchanek, PhD*
@@ -75,7 +75,7 @@ The locked v0 contract. Pure, deterministic, side-effect free.
 - **`Edge`** — frozen dataclass: `src`, `rel`, `dst`, `evidence`
 - **`extract_repo(repo_root)`** — walks all `.py` files, runs two AST passes (definitions + call graph), returns `(nodes, edges)`
 
-Node kinds: `module`, `class`, `function`, `method`, `symbol`  
+Node kinds: `module`, `class`, `function`, `method`, `symbol`
 Edge relations: `CONTAINS`, `CALLS`, `IMPORTS`, `INHERITS`
 
 ### Layer 2 — `CodeGraph` (`graph.py`)

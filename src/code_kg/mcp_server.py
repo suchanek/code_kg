@@ -53,7 +53,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Lazy MCP import — mcp is an optional dependency; give a clear error if absent
@@ -77,7 +76,7 @@ from code_kg.store import DEFAULT_RELS
 # Global state — initialised in main() before the server starts
 # ---------------------------------------------------------------------------
 
-_kg: Optional[CodeKG] = None
+_kg: CodeKG | None = None
 
 
 def _get_kg() -> CodeKG:
@@ -216,7 +215,8 @@ def graph_stats() -> str:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
+
+def _parse_args(argv: list | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="codekg-mcp",
         description="CodeKG MCP server — exposes codebase query tools to AI agents.",
@@ -250,7 +250,7 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def main(argv: Optional[list] = None) -> None:
+def main(argv: list | None = None) -> None:
     """
     CLI entry point for the CodeKG MCP server.
 

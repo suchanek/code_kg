@@ -9,10 +9,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import pytest
-
 from code_kg.codekg import extract_repo
-from code_kg.graph import CodeGraph
 from code_kg.store import GraphStore, ProvMeta
 
 

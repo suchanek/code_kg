@@ -11,51 +11,51 @@ Interactive knowledge-graph explorer with:
 Run with:
     poetry run streamlit run app.py
 """
+
 from __future__ import annotations
 
 import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
-import networkx as nx
 import streamlit as st
 from pyvis.network import Network
 
-from code_kg.store import GraphStore, DEFAULT_RELS
+from code_kg.store import DEFAULT_RELS, GraphStore
 
 # ---------------------------------------------------------------------------
 # Constants — colours and shapes per node kind
 # ---------------------------------------------------------------------------
 
-_KIND_COLOR: Dict[str, str] = {
-    "module":   "#4A90D9",   # blue
-    "class":    "#E67E22",   # orange
-    "function": "#27AE60",   # green
-    "method":   "#8E44AD",   # purple
-    "symbol":   "#95A5A6",   # grey
+_KIND_COLOR: dict[str, str] = {
+    "module": "#4A90D9",  # blue
+    "class": "#E67E22",  # orange
+    "function": "#27AE60",  # green
+    "method": "#8E44AD",  # purple
+    "symbol": "#95A5A6",  # grey
 }
 
-_KIND_SHAPE: Dict[str, str] = {
-    "module":   "box",
-    "class":    "diamond",
+_KIND_SHAPE: dict[str, str] = {
+    "module": "box",
+    "class": "diamond",
     "function": "ellipse",
-    "method":   "dot",
-    "symbol":   "triangle",
+    "method": "dot",
+    "symbol": "triangle",
 }
 
-_REL_COLOR: Dict[str, str] = {
+_REL_COLOR: dict[str, str] = {
     "CONTAINS": "#BDC3C7",
-    "CALLS":    "#E74C3C",
-    "IMPORTS":  "#3498DB",
+    "CALLS": "#E74C3C",
+    "IMPORTS": "#3498DB",
     "INHERITS": "#F39C12",
 }
 
 # Honour the CODEKG_DB env var so the Docker image (which mounts
 # persistent data at /data) works out of the box without the user
 # having to change the sidebar path manually.
-import os as _os
+import os as _os  # noqa: E402
+
 _DEFAULT_DB = _os.environ.get("CODEKG_DB", "codekg.sqlite")
 _DEFAULT_LANCEDB = _os.environ.get("CODEKG_LANCEDB", "./lancedb")
 
@@ -98,6 +98,7 @@ st.markdown(
 # Session-state initialisation
 # ---------------------------------------------------------------------------
 
+
 def _init_state() -> None:
     defaults = {
         "db_path": _DEFAULT_DB,
@@ -115,19 +116,21 @@ def _init_state() -> None:
         if k not in st.session_state:
             st.session_state[k] = v
 
+
 # ---------------------------------------------------------------------------
 # Store helpers
 # ---------------------------------------------------------------------------
 
+
 @st.cache_resource(show_spinner="Opening SQLite store…")
-def _load_store(db_path: str) -> Optional[GraphStore]:
+def _load_store(db_path: str) -> GraphStore | None:
     p = Path(db_path)
     if not p.exists():
         return None
     return GraphStore(db_path)
 
 
-def _get_store() -> Optional[GraphStore]:
+def _get_store() -> GraphStore | None:
     db = st.session_state.db_path
     if st.session_state.store_loaded_path != db:
         st.session_state.store = _load_store(db)
@@ -139,9 +142,11 @@ def _get_store() -> Optional[GraphStore]:
 # CodeKG helper (lazy, cached per (db_path, repo_root, model))
 # ---------------------------------------------------------------------------
 
+
 @st.cache_resource(show_spinner="Loading CodeKG (embedder may take a moment)…")
 def _load_kg(repo_root: str, db_path: str, lancedb_dir: str, model: str):
     from code_kg import CodeKG  # local import to avoid top-level cost
+
     return CodeKG(
         repo_root=repo_root,
         db_path=db_path,
@@ -153,6 +158,7 @@ def _load_kg(repo_root: str, db_path: str, lancedb_dir: str, model: str):
 # ---------------------------------------------------------------------------
 # pyvis graph builder
 # ---------------------------------------------------------------------------
+
 
 def _build_node_tooltip(n: dict, color: str) -> str:
     """
@@ -182,8 +188,7 @@ def _build_node_tooltip(n: dict, color: str) -> str:
         doc_lines = docstring.splitlines()
         shown = doc_lines[:8]
         escaped = [
-            line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            for line in shown
+            line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") for line in shown
         ]
         doc_html = (
             "<hr style='border:0;border-top:1px solid #444;margin:6px 0;'>"
@@ -204,9 +209,7 @@ def _build_node_tooltip(n: dict, color: str) -> str:
         f"&nbsp;&nbsp;<b style='font-size:13px;'>{qualname}</b>"
         + (
             f"<br><span style='color:#888;font-size:11px;'>"
-            f"📄 {module}"
-            + (f" &nbsp;·&nbsp; {line_str}" if line_str else "")
-            + "</span>"
+            f"📄 {module}" + (f" &nbsp;·&nbsp; {line_str}" if line_str else "") + "</span>"
             if module
             else ""
         )
@@ -217,11 +220,11 @@ def _build_node_tooltip(n: dict, color: str) -> str:
 
 
 def _build_pyvis(
-    nodes: List[dict],
-    edges: List[dict],
+    nodes: list[dict],
+    edges: list[dict],
     *,
     height: str = "620px",
-    seed_ids: Optional[Set[str]] = None,
+    seed_ids: set[str] | None = None,
     physics: bool = True,
 ) -> str:
     """
@@ -239,35 +242,39 @@ def _build_pyvis(
         directed=True,
         notebook=False,
     )
-    net.set_options(json.dumps({
-        "physics": {
-            "enabled": physics,
-            "barnesHut": {
-                "gravitationalConstant": -8000,
-                "centralGravity": 0.3,
-                "springLength": 120,
-                "springConstant": 0.04,
-                "damping": 0.09,
-            },
-            "stabilization": {"iterations": 150},
-        },
-        "edges": {
-            "smooth": {"type": "dynamic"},
-            "arrows": {"to": {"enabled": True, "scaleFactor": 0.6}},
-            "font": {"size": 10, "color": "#aaaaaa"},
-        },
-        "interaction": {
-            "hover": True,
-            "tooltipDelay": 80,
-            "navigationButtons": True,
-            "keyboard": True,
-        },
-    }))
+    net.set_options(
+        json.dumps(
+            {
+                "physics": {
+                    "enabled": physics,
+                    "barnesHut": {
+                        "gravitationalConstant": -8000,
+                        "centralGravity": 0.3,
+                        "springLength": 120,
+                        "springConstant": 0.04,
+                        "damping": 0.09,
+                    },
+                    "stabilization": {"iterations": 150},
+                },
+                "edges": {
+                    "smooth": {"type": "dynamic"},
+                    "arrows": {"to": {"enabled": True, "scaleFactor": 0.6}},
+                    "font": {"size": 10, "color": "#aaaaaa"},
+                },
+                "interaction": {
+                    "hover": True,
+                    "tooltipDelay": 80,
+                    "navigationButtons": True,
+                    "keyboard": True,
+                },
+            }
+        )
+    )
 
     seed_ids = seed_ids or set()
 
     # Build a JS-safe node data map for the click panel
-    node_data_js: Dict[str, dict] = {}
+    node_data_js: dict[str, dict] = {}
 
     for n in nodes:
         kind = n.get("kind", "symbol")
@@ -282,8 +289,11 @@ def _build_pyvis(
             n["id"],
             label=label,
             title=tooltip,
-            color={"background": color, "border": border_color,
-                   "highlight": {"background": color, "border": "#FFFFFF"}},
+            color={
+                "background": color,
+                "border": border_color,
+                "highlight": {"background": color, "border": "#FFFFFF"},
+            },
             shape=shape,
             size=18 if kind in ("class", "module") else 12,
             borderWidth=3 if n["id"] in seed_ids else 1,
@@ -456,7 +466,8 @@ def _build_pyvis(
 # Node detail panel
 # ---------------------------------------------------------------------------
 
-def _render_node_detail(node: dict, store: Optional[GraphStore] = None) -> None:
+
+def _render_node_detail(node: dict, store: GraphStore | None = None) -> None:
     """
     Render a rich detail card for a single node.
 
@@ -529,9 +540,8 @@ def _render_node_detail(node: dict, store: Optional[GraphStore] = None) -> None:
             ).fetchall()
             if rows:
                 import pandas as pd
-                edf = pd.DataFrame(
-                    [{"src": r[0], "rel": r[1], "dst": r[2]} for r in rows]
-                )
+
+                edf = pd.DataFrame([{"src": r[0], "rel": r[1], "dst": r[2]} for r in rows])
                 st.dataframe(edf, use_container_width=True, hide_index=True)
             else:
                 st.caption("*No edges.*")
@@ -540,8 +550,8 @@ def _render_node_detail(node: dict, store: Optional[GraphStore] = None) -> None:
 
 
 def _node_detail_section(
-    nodes: List[dict],
-    store: Optional[GraphStore],
+    nodes: list[dict],
+    store: GraphStore | None,
     *,
     key_prefix: str = "detail",
 ) -> None:
@@ -560,7 +570,7 @@ def _node_detail_section(
     st.subheader("🔎 Node Detail")
 
     # Build label → node mapping (qualname preferred, fall back to name)
-    label_map: Dict[str, dict] = {}
+    label_map: dict[str, dict] = {}
     for n in nodes:
         lbl = n.get("qualname") or n.get("name") or n["id"]
         # Disambiguate duplicates
@@ -587,6 +597,7 @@ def _node_detail_section(
 # Legend widget
 # ---------------------------------------------------------------------------
 
+
 def _render_legend() -> None:
     st.markdown("**Node kinds**")
     cols = st.columns(len(_KIND_COLOR))
@@ -594,7 +605,7 @@ def _render_legend() -> None:
         col.markdown(
             f'<span style="display:inline-block;width:12px;height:12px;'
             f'background:{color};border-radius:50%;margin-right:4px;"></span>'
-            f'`{kind}`',
+            f"`{kind}`",
             unsafe_allow_html=True,
         )
     st.markdown("**Edge relations**")
@@ -603,7 +614,7 @@ def _render_legend() -> None:
         col.markdown(
             f'<span style="display:inline-block;width:20px;height:3px;'
             f'background:{color};margin-right:4px;vertical-align:middle;"></span>'
-            f'`{rel}`',
+            f"`{rel}`",
             unsafe_allow_html=True,
         )
 
@@ -611,6 +622,7 @@ def _render_legend() -> None:
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
+
 
 def _render_sidebar() -> dict:
     """Render sidebar controls and return a config dict."""
@@ -633,9 +645,7 @@ def _render_sidebar() -> dict:
         )
     else:
         s = store.stats()
-        st.sidebar.success(
-            f"✅ {s['total_nodes']} nodes · {s['total_edges']} edges"
-        )
+        st.sidebar.success(f"✅ {s['total_nodes']} nodes · {s['total_edges']} edges")
         with st.sidebar.expander("Node counts"):
             for k, v in sorted(s["node_counts"].items()):
                 st.write(f"`{k}`: {v}")
@@ -711,6 +721,7 @@ def _render_sidebar() -> dict:
             with st.spinner("Building graph (AST → SQLite)…"):
                 try:
                     from code_kg import CodeKG
+
                     kg = CodeKG(
                         repo_root=repo_root,
                         db_path=db_path,
@@ -727,8 +738,7 @@ def _render_sidebar() -> dict:
                     else:
                         stats = kg.build_graph(wipe=True)
                         st.success(
-                            f"✅ Graph: {stats.total_nodes} nodes, "
-                            f"{stats.total_edges} edges"
+                            f"✅ Graph: {stats.total_nodes} nodes, {stats.total_edges} edges"
                         )
                     # Invalidate cached store so sidebar refreshes
                     st.session_state.store_loaded_path = None
@@ -743,6 +753,7 @@ def _render_sidebar() -> dict:
             with st.spinner("Building semantic index (SQLite → LanceDB)…"):
                 try:
                     from code_kg import CodeKG
+
                     kg = CodeKG(
                         repo_root=repo_root,
                         db_path=db_path,
@@ -750,10 +761,7 @@ def _render_sidebar() -> dict:
                         model=model,
                     )
                     stats = kg.build_index(wipe=True)
-                    st.success(
-                        f"✅ Index: {stats.indexed_rows} vectors "
-                        f"(dim={stats.index_dim})"
-                    )
+                    st.success(f"✅ Index: {stats.indexed_rows} vectors (dim={stats.index_dim})")
                     _load_kg.clear()  # type: ignore[attr-defined]
                 except Exception as exc:
                     st.error(f"Index build failed: {exc}")
@@ -778,9 +786,10 @@ def _render_sidebar() -> dict:
 # Tab 1 — Full graph browser
 # ---------------------------------------------------------------------------
 
+
 def _tab_graph(cfg: dict) -> None:
     st.header("🗺️ Knowledge Graph Browser")
-    store: Optional[GraphStore] = cfg["store"]
+    store: GraphStore | None = cfg["store"]
     if store is None:
         st.warning("No database loaded. Set the SQLite path in the sidebar.")
         return
@@ -830,7 +839,8 @@ def _tab_graph(cfg: dict) -> None:
     st.markdown("---")
 
     html = _build_pyvis(
-        nodes, edges,
+        nodes,
+        edges,
         height=cfg["graph_height"],
         physics=cfg["physics_on"],
     )
@@ -838,17 +848,20 @@ def _tab_graph(cfg: dict) -> None:
 
     with st.expander("📋 Node table"):
         import pandas as pd
-        df = pd.DataFrame([
-            {
-                "id": n["id"],
-                "kind": n["kind"],
-                "name": n["name"],
-                "qualname": n.get("qualname", ""),
-                "module": n.get("module_path", ""),
-                "line": n.get("lineno", ""),
-            }
-            for n in nodes
-        ])
+
+        df = pd.DataFrame(
+            [
+                {
+                    "id": n["id"],
+                    "kind": n["kind"],
+                    "name": n["name"],
+                    "qualname": n.get("qualname", ""),
+                    "module": n.get("module_path", ""),
+                    "line": n.get("lineno", ""),
+                }
+                for n in nodes
+            ]
+        )
         st.dataframe(df, use_container_width=True, hide_index=True)
 
     # Node detail panel — hover tooltip complement
@@ -859,9 +872,10 @@ def _tab_graph(cfg: dict) -> None:
 # Tab 2 — Hybrid query
 # ---------------------------------------------------------------------------
 
+
 def _tab_query(cfg: dict) -> None:
     st.header("🔍 Hybrid Query")
-    store: Optional[GraphStore] = cfg["store"]
+    store: GraphStore | None = cfg["store"]
     if store is None:
         st.warning("No database loaded. Set the SQLite path in the sidebar.")
         return
@@ -930,27 +944,34 @@ def _tab_query(cfg: dict) -> None:
 
     with tab_table:
         import pandas as pd
-        df = pd.DataFrame([
-            {
-                "kind": n["kind"],
-                "name": n["name"],
-                "qualname": n.get("qualname", ""),
-                "module": n.get("module_path", ""),
-                "line": n.get("lineno", ""),
-                "docstring": (n.get("docstring") or "").strip().splitlines()[0][:80]
-                             if n.get("docstring") else "",
-            }
-            for n in result.nodes
-        ])
+
+        df = pd.DataFrame(
+            [
+                {
+                    "kind": n["kind"],
+                    "name": n["name"],
+                    "qualname": n.get("qualname", ""),
+                    "module": n.get("module_path", ""),
+                    "line": n.get("lineno", ""),
+                    "docstring": (n.get("docstring") or "").strip().splitlines()[0][:80]
+                    if n.get("docstring")
+                    else "",
+                }
+                for n in result.nodes
+            ]
+        )
         st.dataframe(df, use_container_width=True, hide_index=True)
 
     with tab_edges:
         if result.edges:
             import pandas as pd
-            edf = pd.DataFrame([
-                {"src": e["src"], "rel": e["rel"], "dst": e["dst"]}
-                for e in sorted(result.edges, key=lambda x: (x["rel"], x["src"]))
-            ])
+
+            edf = pd.DataFrame(
+                [
+                    {"src": e["src"], "rel": e["rel"], "dst": e["dst"]}
+                    for e in sorted(result.edges, key=lambda x: (x["rel"], x["src"]))
+                ]
+            )
             st.dataframe(edf, use_container_width=True, hide_index=True)
         else:
             st.info("No edges in result set.")
@@ -972,9 +993,10 @@ def _tab_query(cfg: dict) -> None:
 # Tab 3 — Snippet pack
 # ---------------------------------------------------------------------------
 
+
 def _tab_snippets(cfg: dict) -> None:
     st.header("📦 Snippet Pack")
-    store: Optional[GraphStore] = cfg["store"]
+    store: GraphStore | None = cfg["store"]
     if store is None:
         st.warning("No database loaded. Set the SQLite path in the sidebar.")
         return
@@ -989,7 +1011,9 @@ def _tab_snippets(cfg: dict) -> None:
     with col_ctx:
         context_lines = st.number_input("Context lines", min_value=0, max_value=20, value=5)
     with col_ml:
-        max_lines = st.number_input("Max lines/snippet", min_value=20, max_value=400, value=160, step=20)
+        max_lines = st.number_input(
+            "Max lines/snippet", min_value=20, max_value=400, value=160, step=20
+        )
     with col_mn:
         max_nodes = st.number_input("Max nodes", min_value=5, max_value=100, value=50, step=5)
 
@@ -1081,7 +1105,7 @@ def _tab_snippets(cfg: dict) -> None:
             st.markdown(
                 f'<div style="border-left:4px solid {color};padding-left:10px;">'
                 f'<code style="color:{color}">{kind}</code> '
-                f'<b>{qualname}</b><br>'
+                f"<b>{qualname}</b><br>"
                 f'<small style="color:#888">{module}'
                 + (f" · line {lineno}" if lineno else "")
                 + "</small>"
@@ -1091,9 +1115,7 @@ def _tab_snippets(cfg: dict) -> None:
             )
             if snippet:
                 st.code(snippet["text"], language="python")
-                st.caption(
-                    f"`{snippet['path']}` lines {snippet['start']}–{snippet['end']}"
-                )
+                st.caption(f"`{snippet['path']}` lines {snippet['start']}–{snippet['end']}")
             elif doc:
                 st.markdown(f"*{doc[:300]}*")
 
@@ -1101,16 +1123,20 @@ def _tab_snippets(cfg: dict) -> None:
     if pack.edges:
         with st.expander(f"🔗 Edges ({len(pack.edges)})"):
             import pandas as pd
-            edf = pd.DataFrame([
-                {"src": e["src"], "rel": e["rel"], "dst": e["dst"]}
-                for e in sorted(pack.edges, key=lambda x: (x["rel"], x["src"]))
-            ])
+
+            edf = pd.DataFrame(
+                [
+                    {"src": e["src"], "rel": e["rel"], "dst": e["dst"]}
+                    for e in sorted(pack.edges, key=lambda x: (x["rel"], x["src"]))
+                ]
+            )
             st.dataframe(edf, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     _init_state()
@@ -1123,11 +1149,13 @@ def main() -> None:
         "Powered by Streamlit + pyvis."
     )
 
-    tab1, tab2, tab3 = st.tabs([
-        "🗺️ Graph Browser",
-        "🔍 Hybrid Query",
-        "📦 Snippet Pack",
-    ])
+    tab1, tab2, tab3 = st.tabs(
+        [
+            "🗺️ Graph Browser",
+            "🔍 Hybrid Query",
+            "📦 Snippet Pack",
+        ]
+    )
 
     with tab1:
         _tab_graph(cfg)

@@ -12,9 +12,9 @@ Author: Eric G. Suchanek, PhD
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -34,7 +34,7 @@ class Embedder:
 
     dim: int
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """
         Embed a list of strings.
 
@@ -43,7 +43,7 @@ class Embedder:
         """
         raise NotImplementedError
 
-    def embed_query(self, query: str) -> List[float]:
+    def embed_query(self, query: str) -> list[float]:
         """
         Embed a single query string.
 
@@ -70,13 +70,11 @@ class SentenceTransformerEmbedder(Embedder):
         self.model_name = model_name
         self.dim: int = self.model.get_sentence_embedding_dimension()
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        vecs = self.model.encode(
-            texts, normalize_embeddings=True, show_progress_bar=False
-        )
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        vecs = self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return [np.asarray(v, dtype="float32").tolist() for v in vecs]
 
-    def embed_query(self, query: str) -> List[float]:
+    def embed_query(self, query: str) -> list[float]:
         """Embed a single query string."""
         vec = self.model.encode([query], normalize_embeddings=True)[0]
         return np.asarray(vec, dtype="float32").tolist()
@@ -152,7 +150,7 @@ class SemanticIndex:
         self,
         lancedb_dir: str | Path,
         *,
-        embedder: Optional[Embedder] = None,
+        embedder: Embedder | None = None,
         table: str = _DEFAULT_TABLE,
         index_kinds: Sequence[str] = _DEFAULT_KINDS,
     ) -> None:
@@ -168,7 +166,7 @@ class SemanticIndex:
 
     def build(
         self,
-        store: "GraphStore",  # type: ignore[name-defined]  # forward ref
+        store: GraphStore,  # type: ignore[name-defined]  # forward ref  # noqa: F821
         *,
         wipe: bool = False,
         batch_size: int = 256,
@@ -197,9 +195,7 @@ class SemanticIndex:
             # upsert: delete existing IDs then add fresh rows
             ids = [n["id"] for n in chunk]
             if ids:
-                pred = " OR ".join(
-                    [f"id = '{_escape(nid)}'" for nid in ids]
-                )
+                pred = " OR ".join([f"id = '{_escape(nid)}'" for nid in ids])
                 tbl.delete(pred)
 
             rows = [
@@ -230,7 +226,7 @@ class SemanticIndex:
     # Search
     # ------------------------------------------------------------------
 
-    def search(self, query: str, k: int = 8) -> List[SeedHit]:
+    def search(self, query: str, k: int = 8) -> list[SeedHit]:
         """
         Semantic vector search.
 
@@ -242,7 +238,7 @@ class SemanticIndex:
         qvec = self.embedder.embed_query(query)
         raw = tbl.search(qvec).limit(k).to_list()
 
-        hits: List[SeedHit] = []
+        hits: list[SeedHit] = []
         for rank, row in enumerate(raw):
             dist = _extract_distance(row, rank)
             hits.append(
@@ -262,7 +258,7 @@ class SemanticIndex:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _read_nodes(self, store: "GraphStore") -> List[dict]:  # type: ignore[name-defined]
+    def _read_nodes(self, store: GraphStore) -> list[dict]:  # type: ignore[name-defined]  # noqa: F821
         """Read indexable nodes from the store."""
         return store.query_nodes(kinds=list(self.index_kinds))
 
