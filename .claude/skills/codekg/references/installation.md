@@ -24,8 +24,9 @@
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--sqlite` | | `.codekg/graph.sqlite` | Path to SQLite graph (**not** `--db`) |
-| `--lancedb` | | `.codekg/lancedb` | LanceDB output directory |
+| `--repo` | | `.` | Repository root (anchors default paths) |
+| `--sqlite` | | `<repo>/.codekg/graph.sqlite` | Path to SQLite graph (**not** `--db`) |
+| `--lancedb` | | `<repo>/.codekg/lancedb` | LanceDB output directory |
 | `--table` | | `codekg_nodes` | LanceDB table name |
 | `--model` | | `all-MiniLM-L6-v2` | Sentence-transformer model |
 | `--wipe` | | false | Delete existing vectors first |

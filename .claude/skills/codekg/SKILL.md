@@ -25,8 +25,8 @@ code-kg = { git = "https://github.com/suchanek/code_kg.git", extras = ["mcp"] }
 # Step 1 — SQLite graph (flag: --db)
 poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
 
-# Step 2 — LanceDB vector index (flag: --sqlite, NOT --db)
-poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
+# Step 2 — LanceDB vector index (use --repo, like build-sqlite)
+poetry run codekg-build-lancedb --repo .
 ```
 
 > **Common mistake:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
