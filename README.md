@@ -225,24 +225,33 @@ After the script completes, reload VS Code (`Cmd+Shift+P` → `Developer: Reload
 
 ## CLI Usage
 
-CodeKG exposes six command-line entry points:
+Once installed (`pip install code-kg`), all commands are available via the
+`python -m code_kg` dispatcher:
+
+```bash
+python -m code_kg --help
+```
+
+> **Dev workflow:** if you cloned the repo and are working inside the Poetry
+> environment, prefix every command with `poetry run` instead, e.g.
+> `poetry run python -m code_kg build-sqlite`.
 
 ### 1. Build the SQLite knowledge graph
 
 ```bash
-codekg-build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [--wipe]
+python -m code_kg build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [--wipe]
 ```
 
 ### 2. Build the LanceDB semantic index
 
 ```bash
-codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
+python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
 ```
 
 ### 3. Run a hybrid query
 
 ```bash
-codekg-query \
+python -m code_kg query \
   --sqlite .codekg/graph.sqlite \
   --lancedb .codekg/lancedb \
   --q "database connection setup" \
@@ -253,7 +262,7 @@ codekg-query \
 ### 4. Generate a snippet pack
 
 ```bash
-codekg-pack \
+python -m code_kg pack \
   --repo-root /path/to/repo \
   --sqlite .codekg/graph.sqlite \
   --lancedb .codekg/lancedb \
@@ -264,7 +273,7 @@ codekg-pack \
   --out context_pack.md
 ```
 
-**Key options for `codekg-pack`:**
+**Key options for `pack`:**
 
 | Option             | Default                          | Description                              |
 |--------------------|----------------------------------|------------------------------------------|
@@ -280,13 +289,13 @@ codekg-pack \
 ### 5. Launch the Streamlit visualizer
 
 ```bash
-codekg-viz [--db .codekg/graph.sqlite] [--port 8501]
+python -m code_kg viz [--db .codekg/graph.sqlite] [--port 8501]
 ```
 
 ### 6. Start the MCP server
 
 ```bash
-codekg-mcp \
+python -m code_kg mcp \
   --repo    /path/to/repo \
   --db      /path/to/repo/.codekg/graph.sqlite \
   --lancedb /path/to/repo/.codekg/lancedb
@@ -299,7 +308,7 @@ codekg-mcp \
 CodeKG ships an interactive knowledge-graph explorer built with Streamlit and pyvis.
 
 ```bash
-codekg-viz
+poetry run codekg-viz
 ```
 
 The app provides three tabs:
@@ -329,8 +338,8 @@ CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the
 Build the knowledge graph first (the MCP server is read-only):
 
 ```bash
-codekg-build-sqlite  --repo /path/to/repo --db .codekg/graph.sqlite
-codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
+poetry run codekg-build-sqlite  --repo /path/to/repo --db .codekg/graph.sqlite
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
 
 > **Note:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
@@ -452,33 +461,58 @@ See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schem
 
 ```
 code_kg/
-├── src/code_kg/
-│   ├── codekg.py                # Core primitives: Node, Edge, extract_repo
-│   ├── graph.py                 # CodeGraph — pure AST extraction
-│   ├── store.py                 # GraphStore — SQLite persistence + traversal
-│   ├── index.py                 # SemanticIndex, Embedder, SeedHit
-│   ├── kg.py                    # CodeKG orchestrator + result types
-│   ├── build_codekg_sqlite.py   # CLI: repo → SQLite
-│   ├── build_codekg_lancedb.py  # CLI: SQLite → LanceDB
-│   ├── codekg_query.py          # CLI: hybrid query
-│   ├── codekg_snippet_packer.py # CLI: snippet pack
-│   ├── codekg_viz.py            # CLI: launch Streamlit visualizer
-│   ├── app.py                   # Streamlit web application
-│   └── mcp_server.py            # MCP server (FastMCP, optional dep)
-├── Dockerfile                   # Docker image definition
-├── docker-compose.yml           # Docker Compose service
-├── .streamlit/config.toml       # Streamlit server config
-├── .mcp.json                    # Claude Code MCP configuration
-├── .claude/commands/setup-mcp.md # /setup-mcp Claude skill
+├── CHANGELOG.md
+├── CLAUDE.md
+├── LICENSE
+├── README.md
+├── release-notes.md
+├── pyproject.toml
+├── docker/
+│   ├── docker-compose.yml
+│   └── Dockerfile
+├── docs/
+│   ├── Architecture.md
+│   ├── code_kg_medium.md
+│   ├── code_kg_workflow.md
+│   ├── code_kg.aux
+│   ├── code_kg.md
+│   ├── code_kg.tex
+│   ├── deployment.md
+│   ├── docker.md
+│   ├── MCP.md
+│   └── logo.png
+├── lib/
+│   ├── bindings/
+│   │   └── utils.js
+│   ├── tom-select/
+│   │   ├── tom-select.complete.min.js
+│   │   └── tom-select.css
+│   └── vis-9.1.2/
+│       ├── vis-network.css
+│       └── vis-network.min.js
+├── scripts/
+│   └── install-skill.sh
+├── src/
+│   └── code_kg/
+│       ├── __init__.py
+│       ├── app.py
+│       ├── build_codekg_lancedb.py
+│       ├── build_codekg_sqlite.py
+│       ├── codekg.py
+│       ├── codekg_query.py
+│       ├── codekg_snippet_packer.py
+│       ├── codekg_viz.py
+│       ├── graph.py
+│       ├── index.py
+│       ├── kg.py
+│       ├── mcp_server.py
+│       └── store.py
 ├── tests/
-│   ├── test_primitives.py       # Node, Edge, extract_repo (40 tests)
-│   ├── test_graph.py            # CodeGraph (12 tests)
-│   ├── test_store.py            # GraphStore (18 tests)
-│   └── test_kg.py               # CodeKG, result types (28 tests)
-└── docs/
-    ├── Architecture.md          # System architecture
-    ├── MCP.md                   # MCP server reference
-    └── docker.md                # Docker setup reference
+│   ├── test_graph.py
+│   ├── test_kg.py
+│   ├── test_primitives.py
+│   └── test_store.py
+└── __pycache__/
 ```
 
 ---
