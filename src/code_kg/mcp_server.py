@@ -27,7 +27,7 @@ Usage
 -----
 Install the package, then run::
 
-    codekg-mcp --repo /path/to/repo --db codekg.sqlite --lancedb ./lancedb
+    codekg-mcp --repo /path/to/repo --db .codekg/graph.sqlite --lancedb .codekg/lancedb
 
 Or configure in Claude Desktop's ``claude_desktop_config.json``::
 
@@ -37,8 +37,8 @@ Or configure in Claude Desktop's ``claude_desktop_config.json``::
           "command": "codekg-mcp",
           "args": [
             "--repo", "/path/to/repo",
-            "--db",   "/path/to/codekg.sqlite",
-            "--lancedb", "/path/to/lancedb"
+            "--db",   "/path/to/repo/.codekg/graph.sqlite",
+            "--lancedb", "/path/to/repo/.codekg/lancedb"
           ]
         }
       }

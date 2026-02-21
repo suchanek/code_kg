@@ -93,7 +93,7 @@ Edges may carry **evidence** (e.g., source line number and expression text), ena
 
 The repository is parsed using Python's `ast` module. All `.py` files are traversed and definitions, calls, imports, and inheritance relationships are extracted. Normalized node IDs are generated and explicit edges are emitted with associated evidence.
 
-**Output:** a single SQLite database (`codekg.sqlite`) with `nodes` and `edges` tables.
+**Output:** a single SQLite database (`.codekg/graph.sqlite`) with `nodes` and `edges` tables.
 
 > This phase uses **no embeddings and no LLMs**.
 
@@ -199,7 +199,7 @@ The installer sets up the full **AI integration layer** end-to-end:
 1. Installs `SKILL.md` reference files for Claude Code, Kilo Code, and other agents
 2. Installs the `/codekg` slash command for Cline
 3. Installs `codekg-mcp` if not present — prefers the latest GitHub release wheel (`pip install`), falls back to git source
-4. Builds the SQLite knowledge graph (`codekg.sqlite`) and LanceDB semantic index
+4. Builds the SQLite knowledge graph (`.codekg/graph.sqlite`) and LanceDB semantic index
 5. Writes MCP configuration for each provider:
    - `.mcp.json` — Claude Code and Kilo Code
    - `.vscode/mcp.json` — GitHub Copilot
@@ -230,21 +230,21 @@ CodeKG exposes six command-line entry points:
 ### 1. Build the SQLite knowledge graph
 
 ```bash
-codekg-build-sqlite --repo /path/to/repo --db codekg.sqlite [--wipe]
+codekg-build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [--wipe]
 ```
 
 ### 2. Build the LanceDB semantic index
 
 ```bash
-codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb [--model all-MiniLM-L6-v2] [--wipe]
+codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
 ```
 
 ### 3. Run a hybrid query
 
 ```bash
 codekg-query \
-  --sqlite codekg.sqlite \
-  --lancedb ./lancedb \
+  --sqlite .codekg/graph.sqlite \
+  --lancedb .codekg/lancedb \
   --q "database connection setup" \
   --k 8 \
   --hop 1
@@ -255,8 +255,8 @@ codekg-query \
 ```bash
 codekg-pack \
   --repo-root /path/to/repo \
-  --sqlite codekg.sqlite \
-  --lancedb ./lancedb \
+  --sqlite .codekg/graph.sqlite \
+  --lancedb .codekg/lancedb \
   --q "configuration loading" \
   --k 8 \
   --hop 1 \
@@ -280,7 +280,7 @@ codekg-pack \
 ### 5. Launch the Streamlit visualizer
 
 ```bash
-codekg-viz [--db codekg.sqlite] [--port 8501]
+codekg-viz [--db .codekg/graph.sqlite] [--port 8501]
 ```
 
 ### 6. Start the MCP server
@@ -288,22 +288,18 @@ codekg-viz [--db codekg.sqlite] [--port 8501]
 ```bash
 codekg-mcp \
   --repo    /path/to/repo \
-  --db      /path/to/codekg.sqlite \
-  --lancedb /path/to/lancedb
+  --db      /path/to/repo/.codekg/graph.sqlite \
+  --lancedb /path/to/repo/.codekg/lancedb
 ```
 
 ---
 
 ## Streamlit Web Application
 
-CodeKG ships an interactive knowledge-graph explorer (`app.py`) built with Streamlit and pyvis.
+CodeKG ships an interactive knowledge-graph explorer built with Streamlit and pyvis.
 
 ```bash
-# Launch via CLI entry point
 codekg-viz
-
-# Or directly
-streamlit run app.py
 ```
 
 The app provides three tabs:
@@ -333,8 +329,8 @@ CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the
 Build the knowledge graph first (the MCP server is read-only):
 
 ```bash
-codekg-build-sqlite  --repo /path/to/repo --db codekg.sqlite
-codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
+codekg-build-sqlite  --repo /path/to/repo --db .codekg/graph.sqlite
+codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
 
 > **Note:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
@@ -366,8 +362,8 @@ Add a `codekg` entry to `claude_desktop_config.json`
       "command": "codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -387,8 +383,8 @@ Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `com
       "command": "/absolute/path/to/.venv/bin/codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -411,9 +407,9 @@ GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key,
         "--repo",
         "/absolute/path/to/repo",
         "--db",
-        "/absolute/path/to/codekg.sqlite",
+        "/absolute/path/to/repo/.codekg/graph.sqlite",
         "--lancedb",
-        "/absolute/path/to/lancedb"
+        "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -443,10 +439,10 @@ See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schem
 
 ## Output Artifacts
 
-| Artifact      | Description                                      |
-|---------------|--------------------------------------------------|
-| `codekg.sqlite` | Canonical knowledge graph (nodes + edges)      |
-| `lancedb_dir/`  | Derived semantic vector index                  |
+| Artifact             | Description                                      |
+|----------------------|--------------------------------------------------|
+| `.codekg/graph.sqlite` | Canonical knowledge graph (nodes + edges)      |
+| `.codekg/lancedb/`    | Derived semantic vector index                  |
 | Markdown        | Human-readable context packs with line numbers |
 | JSON            | Structured payload for agent/LLM ingestion     |
 
@@ -467,8 +463,8 @@ code_kg/
 │   ├── codekg_query.py          # CLI: hybrid query
 │   ├── codekg_snippet_packer.py # CLI: snippet pack
 │   ├── codekg_viz.py            # CLI: launch Streamlit visualizer
+│   ├── app.py                   # Streamlit web application
 │   └── mcp_server.py            # MCP server (FastMCP, optional dep)
-├── app.py                       # Streamlit web application
 ├── Dockerfile                   # Docker image definition
 ├── docker-compose.yml           # Docker Compose service
 ├── .streamlit/config.toml       # Streamlit server config

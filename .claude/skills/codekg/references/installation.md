@@ -37,8 +37,8 @@
 | Flag | Default | Description |
 |---|---|---|
 | `--repo` | `.` | Repository root |
-| `--db` | `codekg.sqlite` | SQLite path |
-| `--lancedb` | `./lancedb` | LanceDB directory |
+| `--db` | `.codekg/graph.sqlite` | SQLite path |
+| `--lancedb` | `.codekg/lancedb` | LanceDB directory |
 | `--model` | `all-MiniLM-L6-v2` | Embedding model |
 | `--transport` | `stdio` | `stdio` or `sse` |
 
@@ -46,8 +46,8 @@
 
 ```bash
 poetry run codekg-query \
-  --sqlite codekg.sqlite \
-  --lancedb ./lancedb \
+  --sqlite .codekg/graph.sqlite \
+  --lancedb .codekg/lancedb \
   --q "your query here"
 ```
 
@@ -80,8 +80,8 @@ poetry run codekg-query \
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -121,8 +121,8 @@ poetry run codekg-query \
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -145,8 +145,8 @@ GitHub Copilot uses a different schema — `"servers"` key (not `"mcpServers"`) 
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -167,8 +167,8 @@ VS Code will prompt you to **Trust** the server on first use.
       "command": "/path/to/venv/bin/codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -225,10 +225,7 @@ Get venv path: `poetry env info --path`
 ## Gitignore Recommendations
 
 ```gitignore
-codekg.sqlite
-codekg.sqlite-shm
-codekg.sqlite-wal
-lancedb/
+.codekg/
 ```
 
 ---
@@ -240,15 +237,15 @@ lancedb/
 poetry run python -c "
 from code_kg import CodeKG
 import json
-kg = CodeKG(repo_root='.', db_path='codekg.sqlite', lancedb_dir='./lancedb')
+kg = CodeKG(repo_root='.', db_path='.codekg/graph.sqlite', lancedb_dir='.codekg/lancedb')
 print(json.dumps(kg.stats(), indent=2))
 "
 
 # Sample query (CLI)
-poetry run codekg-query --sqlite codekg.sqlite --lancedb ./lancedb --q "module structure"
+poetry run codekg-query --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb --q "module structure"
 
 # Verify SQLite row counts
-sqlite3 codekg.sqlite "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
+sqlite3 .codekg/graph.sqlite "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
 ```
 
 ---

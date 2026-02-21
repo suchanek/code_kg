@@ -9,7 +9,7 @@ Interactive knowledge-graph explorer with:
   • Snippets tab: source-grounded snippet pack viewer
 
 Run with:
-    poetry run streamlit run app.py
+    poetry run codekg-viz
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ _REL_COLOR: dict[str, str] = {
 # having to change the sidebar path manually.
 import os as _os  # noqa: E402
 
-_DEFAULT_DB = _os.environ.get("CODEKG_DB", "codekg.sqlite")
-_DEFAULT_LANCEDB = _os.environ.get("CODEKG_LANCEDB", "./lancedb")
+_DEFAULT_DB = _os.environ.get("CODEKG_DB", ".codekg/graph.sqlite")
+_DEFAULT_LANCEDB = _os.environ.get("CODEKG_LANCEDB", ".codekg/lancedb")
 
 # ---------------------------------------------------------------------------
 # Page config (must be first Streamlit call)
@@ -633,7 +633,7 @@ def _render_sidebar() -> dict:
     db_path = st.sidebar.text_input(
         "SQLite path",
         value=st.session_state.db_path,
-        help="Path to codekg.sqlite (relative or absolute)",
+        help="Path to .codekg/graph.sqlite (relative or absolute)",
     )
     st.session_state.db_path = db_path
 

@@ -129,14 +129,16 @@ LOCAL_SKILL="${REPO_ROOT:+${REPO_ROOT}/.claude/skills/codekg/SKILL.md}"
 
 # The target repo is where the user ran the script from (CWD).
 TARGET_REPO="${PWD}"
-SQLITE_DB="${TARGET_REPO}/codekg.sqlite"
-# Prefer codekg_lancedb; fall back to lancedb for older installs
-if [ -d "${TARGET_REPO}/codekg_lancedb" ]; then
+SQLITE_DB="${TARGET_REPO}/.codekg/graph.sqlite"
+# Prefer .codekg/ (current layout); fall back to legacy paths for older installs
+if [ -d "${TARGET_REPO}/.codekg/lancedb" ]; then
+    LANCEDB_DIR="${TARGET_REPO}/.codekg/lancedb"
+elif [ -d "${TARGET_REPO}/codekg_lancedb" ]; then
     LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
 elif [ -d "${TARGET_REPO}/lancedb" ]; then
     LANCEDB_DIR="${TARGET_REPO}/lancedb"
 else
-    LANCEDB_DIR="${TARGET_REPO}/codekg_lancedb"
+    LANCEDB_DIR="${TARGET_REPO}/.codekg/lancedb"
 fi
 
 echo "╔══════════════════════════════════════════════════╗"
@@ -353,6 +355,7 @@ else
     if [ -n "$DRY_RUN" ]; then
         echo "  [dry-run] would run: codekg-build-sqlite --repo ${TARGET_REPO} --db ${SQLITE_DB}"
     else
+        _exec mkdir -p "$(dirname "$SQLITE_DB")"
         echo "  → Building SQLite graph at: ${SQLITE_DB}"
         (cd "${TARGET_REPO}" && ${_POETRY_RUN} codekg-build-sqlite --repo "${TARGET_REPO}" --db "${SQLITE_DB}")
         if [ -f "$SQLITE_DB" ]; then

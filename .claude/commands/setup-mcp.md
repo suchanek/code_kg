@@ -24,8 +24,8 @@ This command accepts an optional repository path argument:
 4. If no Python files are found, stop and report the issue.
 
 Derive artifact paths from `REPO_ROOT`:
-- `DB_PATH` → `$REPO_ROOT/codekg.sqlite`
-- `LANCEDB_DIR` → `$REPO_ROOT/lancedb`
+- `DB_PATH` → `$REPO_ROOT/.codekg/graph.sqlite`
+- `LANCEDB_DIR` → `$REPO_ROOT/.codekg/lancedb`
 
 ---
 

@@ -23,10 +23,10 @@ code-kg = { git = "https://github.com/suchanek/code_kg.git", extras = ["mcp"] }
 
 ```bash
 # Step 1 — SQLite graph (flag: --db)
-poetry run codekg-build-sqlite --repo . --db codekg.sqlite
+poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
 
 # Step 2 — LanceDB vector index (flag: --sqlite, NOT --db)
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
 
 > **Common mistake:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
@@ -45,8 +45,8 @@ Both Claude Code and Kilo Code read per-repo config from `.mcp.json` in the proj
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -73,8 +73,8 @@ GitHub Copilot uses a different schema — `"servers"` key and `"type": "stdio"`
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": {
         "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -103,7 +103,7 @@ Config path: `~/Library/Application Support/Claude/claude_desktop_config.json` (
   "mcpServers": {
     "codekg": {
       "command": "/path/to/venv/bin/codekg-mcp",
-      "args": ["--repo", "/abs/path", "--db", "/abs/path/codekg.sqlite", "--lancedb", "/abs/path/lancedb"]
+      "args": ["--repo", "/abs/path", "--db", "/abs/path/.codekg/graph.sqlite", "--lancedb", "/abs/path/.codekg/lancedb"]
     }
   }
 }

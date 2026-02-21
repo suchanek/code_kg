@@ -28,7 +28,7 @@ Low-level primitives (v0 contract, locked)::
     from code_kg import Node, Edge
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Eric G. Suchanek, PhD"
 
 # Low-level primitives (locked v0 contract)

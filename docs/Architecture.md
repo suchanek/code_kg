@@ -16,7 +16,7 @@ Structure is treated as **ground truth**. Semantic search is strictly an acceler
 The system ships with:
 - A **Python library** (`code_kg`) with a layered class API
 - **CLI entry points** for building and querying the graph
-- A **Streamlit web application** (`app.py`) for interactive exploration
+- A **Streamlit web application** (`codekg-viz`) for interactive exploration
 - A **Docker image** for zero-install deployment
 - An **MCP server** (`codekg-mcp`) for AI agent integration
 - A **`/setup-mcp` Claude skill** for automated MCP configuration
@@ -337,16 +337,12 @@ Module nodes show the top-of-file window. Nodes without line info fall back to t
 
 ---
 
-## Streamlit Web Application (`app.py`)
+## Streamlit Web Application
 
 CodeKG ships an interactive knowledge-graph explorer built with **Streamlit** and **pyvis**.
 
 ```bash
-# Launch locally
-codekg-viz [--db codekg.sqlite] [--port 8501]
-
-# Or directly
-streamlit run app.py
+codekg-viz [--db .codekg/graph.sqlite] [--port 8501]
 ```
 
 The application provides three tabs:
@@ -459,15 +455,15 @@ The server is a thin wrapper around `CodeKG`. It initialises a single `CodeKG` i
 ```bash
 codekg-mcp \
   --repo    /path/to/repo \
-  --db      /path/to/codekg.sqlite \
-  --lancedb /path/to/lancedb
+  --db      /path/to/repo/.codekg/graph.sqlite \
+  --lancedb /path/to/repo/.codekg/lancedb
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--repo` | `.` | Repository root (for snippet path resolution) |
-| `--db` | `codekg.sqlite` | SQLite knowledge graph |
-| `--lancedb` | `./lancedb` | LanceDB vector index directory |
+| `--db` | `.codekg/graph.sqlite` | SQLite knowledge graph |
+| `--lancedb` | `.codekg/lancedb` | LanceDB vector index directory |
 | `--model` | `all-MiniLM-L6-v2` | Sentence-transformer embedding model |
 | `--transport` | `stdio` | `stdio` (Claude Desktop) or `sse` (HTTP clients) |
 
@@ -476,8 +472,8 @@ codekg-mcp \
 The SQLite graph and LanceDB index must be built before starting the server:
 
 ```bash
-codekg-build-sqlite --repo /path/to/repo --db codekg.sqlite
-codekg-build-lancedb --db codekg.sqlite --lancedb ./lancedb
+codekg-build-sqlite  --repo /path/to/repo --db .codekg/graph.sqlite
+codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
 
 The `mcp` package is an optional dependency:
@@ -509,8 +505,8 @@ Add a `codekg` entry to `claude_desktop_config.json`
       "command": "codekg-mcp",
       "args": [
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -531,8 +527,8 @@ For Claude Code, use `poetry run` so the entry point resolves correctly:
       "args": [
         "run", "codekg-mcp",
         "--repo",    "/path/to/repo",
-        "--db",      "/path/to/codekg.sqlite",
-        "--lancedb", "/path/to/lancedb"
+        "--db",      "/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/path/to/repo/.codekg/lancedb"
       ]
     }
   }
@@ -608,8 +604,8 @@ code_kg/
 │   ├── codekg_query.py          # CLI: hybrid query
 │   ├── codekg_snippet_packer.py # CLI: snippet pack
 │   ├── codekg_viz.py            # CLI: launch Streamlit visualizer
+│   ├── app.py                   # Streamlit web application
 │   └── mcp_server.py            # MCP server (FastMCP, optional dep)
-├── app.py                       # Streamlit web application
 ├── Dockerfile                   # Docker image definition
 ├── docker-compose.yml           # Docker Compose service
 ├── .streamlit/config.toml       # Streamlit server config
@@ -637,14 +633,14 @@ Repository (.py files)
   (nodes, edges)          ← pure, deterministic, no I/O
         │
         ▼  GraphStore.write()
-  codekg.sqlite           ← authoritative, canonical
+  .codekg/graph.sqlite    ← authoritative, canonical
   ┌─────────────┐
   │ nodes table │
   │ edges table │
   └─────────────┘
         │
         ▼  SemanticIndex.build()
-  lancedb_dir/            ← derived, disposable
+  .codekg/lancedb/        ← derived, disposable
   ┌──────────────────┐
   │ codekg_nodes tbl │
   │ (id, vector, …)  │
@@ -661,7 +657,7 @@ Repository (.py files)
         ▼
   Markdown / JSON output
         │
-        ├──▶  Streamlit app (app.py)     ← interactive browser
+        ├──▶  Streamlit app (codekg-viz) ← interactive browser
         └──▶  MCP server (mcp_server.py) ← AI agent tools
 ```
 

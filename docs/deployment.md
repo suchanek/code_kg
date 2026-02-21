@@ -11,7 +11,7 @@ CodeKG has two distinct deployment surfaces:
 | Surface | What it is | Best options |
 |---|---|---|
 | **Python library + CLI** | `code_kg` package + 5 CLI entry points | PyPI, Conda, GitHub Releases |
-| **Streamlit web app** | `app.py` interactive graph explorer | Docker, Streamlit Cloud, Fly.io |
+| **Streamlit web app** | `codekg-viz` interactive graph explorer | Streamlit Cloud, Fly.io |
 
 These can be deployed independently or together. The sections below cover each option in detail.
 
@@ -112,138 +112,13 @@ git push origin v0.1.0
 
 ---
 
-## Option 2 — Docker (Recommended for the Streamlit app)
-
-Docker packages the Streamlit app (`app.py`) with all heavy dependencies
-(`sentence-transformers`, `lancedb`, `pyvis`) into a single portable image.
-
-### 2a. Dockerfile
-
-Create `Dockerfile` at the project root:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# System deps for sentence-transformers / torch
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Poetry
-RUN pip install --no-cache-dir poetry==1.8.3
-
-# Copy dependency files first (layer cache)
-COPY pyproject.toml poetry.lock ./
-
-# Install runtime deps only (no dev tools)
-RUN poetry config virtualenvs.create false \
-    && poetry install --only main --no-interaction --no-ansi
-
-# Copy source
-COPY src/ ./src/
-COPY app.py ./
-
-# Expose Streamlit port
-EXPOSE 8501
-
-# Streamlit config: disable telemetry, set server options
-ENV STREAMLIT_SERVER_PORT=8501 \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.headless=true"]
-```
-
-### 2b. docker-compose.yml (with persistent data volumes)
-
-```yaml
-version: "3.9"
-
-services:
-  codekg:
-    build: .
-    image: codekg:latest
-    ports:
-      - "8501:8501"
-    volumes:
-      # Mount your repo for analysis
-      - ${REPO_ROOT:-./}:/workspace:ro
-      # Persist the SQLite graph and LanceDB index
-      - codekg-data:/data
-    environment:
-      - CODEKG_DB=/data/codekg.sqlite
-      - CODEKG_LANCEDB=/data/lancedb
-
-volumes:
-  codekg-data:
-```
-
-### 2c. Build and run
-
-```bash
-# Build
-docker build -t codekg:latest .
-
-# Run (mount current repo for analysis)
-docker run -p 8501:8501 \
-  -v $(pwd):/workspace:ro \
-  -v codekg-data:/data \
-  codekg:latest
-
-# Or with compose
-REPO_ROOT=/path/to/your/repo docker compose up
-```
-
-Open `http://localhost:8501` in your browser.
-
-### 2d. Publish to Docker Hub / GHCR
-
-```bash
-# Docker Hub
-docker tag codekg:latest suchanek/codekg:0.1.0
-docker push suchanek/codekg:0.1.0
-
-# GitHub Container Registry (free for public repos)
-docker tag codekg:latest ghcr.io/suchanek/codekg:0.1.0
-docker push ghcr.io/suchanek/codekg:0.1.0
-```
-
-Automate via GitHub Actions (`.github/workflows/docker.yml`):
-
-```yaml
-name: Build & Push Docker image
-
-on:
-  push:
-    tags: ["v*"]
-
-jobs:
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          push: true
-          tags: ghcr.io/suchanek/codekg:${{ github.ref_name }}
-```
-
----
-
-## Option 3 — Streamlit Community Cloud (Zero-infra for the app)
+## Option 2 — Streamlit Community Cloud (Zero-infra for the app)
 
 The fastest way to share the Streamlit app publicly — free tier available.
 
 1. Push the repo to GitHub (already done: `github.com/suchanek/code_kg`)
 2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**
-3. Select repo `suchanek/code_kg`, branch `main`, main file `app.py`
+3. Select repo `suchanek/code_kg`, branch `main`, main file `src/code_kg/app.py`
 4. Add a `requirements.txt` (Streamlit Cloud doesn't use Poetry directly):
 
 ```bash
@@ -257,9 +132,9 @@ committed to the repo or stored in cloud storage (S3, GCS).
 
 ---
 
-## Option 4 — Fly.io (Lightweight cloud VM for the app)
+## Option 3 — Fly.io (Lightweight cloud VM for the app)
 
-Fly.io runs Docker containers globally with persistent volumes — a good middle
+Fly.io runs containers globally with persistent volumes — a good middle
 ground between Streamlit Cloud and a full Kubernetes cluster.
 
 ```bash
@@ -267,8 +142,8 @@ ground between Streamlit Cloud and a full Kubernetes cluster.
 brew install flyctl
 fly auth login
 
-# From the repo root (uses the Dockerfile above)
-fly launch --name codekg --region iad --dockerfile Dockerfile
+# From the repo root
+fly launch --name codekg --region iad
 
 # Add a persistent volume for SQLite + LanceDB
 fly volumes create codekg_data --size 10 --region iad
@@ -298,7 +173,7 @@ Add to `fly.toml`:
 
 ---
 
-## Option 5 — GitHub Releases (Binary artifacts)
+## Option 4 — GitHub Releases (Binary artifacts)
 
 For users who want pre-built wheels without PyPI:
 
@@ -320,7 +195,7 @@ pip install https://github.com/suchanek/code_kg/releases/download/v0.1.0/code_kg
 
 ---
 
-## Option 6 — MCP Server (AI agent integration)
+## Option 5 — MCP Server (AI agent integration)
 
 CodeKG ships a production-ready MCP server (`codekg-mcp`) that exposes the full hybrid query and snippet-pack pipeline as structured tools for any MCP-compatible agent — Claude Code, Kilo Code, GitHub Copilot, Claude Desktop, Cursor, Continue, or any custom agent.
 
@@ -336,8 +211,8 @@ pip install "code-kg[mcp]"
 ### Build the knowledge graph first
 
 ```bash
-poetry run codekg-build-sqlite  --repo /path/to/repo --db codekg.sqlite
-poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
+poetry run codekg-build-sqlite  --repo /path/to/repo
+poetry run codekg-build-lancedb
 ```
 
 ### Start the server manually
@@ -345,8 +220,8 @@ poetry run codekg-build-lancedb --sqlite codekg.sqlite --lancedb ./lancedb
 ```bash
 codekg-mcp \
   --repo    /path/to/repo \
-  --db      /path/to/codekg.sqlite \
-  --lancedb /path/to/lancedb
+  --db      /path/to/repo/.codekg/graph.sqlite \
+  --lancedb /path/to/repo/.codekg/lancedb
 ```
 
 ### Exposed tools
@@ -375,8 +250,8 @@ codekg-mcp \
       "command": "poetry",
       "args": ["run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": { "POETRY_VIRTUALENVS_IN_PROJECT": "false" }
     }
@@ -393,8 +268,8 @@ codekg-mcp \
       "command": "poetry",
       "args": ["run", "codekg-mcp",
         "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/codekg.sqlite",
-        "--lancedb", "/absolute/path/to/repo/lancedb"
+        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
+        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
       ],
       "env": { "POETRY_VIRTUALENVS_IN_PROJECT": "false" }
     }
@@ -411,7 +286,7 @@ poetry env info --path   # → /path/to/venv; binary at /path/to/venv/bin/codekg
   "mcpServers": {
     "codekg": {
       "command": "/path/to/venv/bin/codekg-mcp",
-      "args": ["--repo", "/abs/path", "--db", "/abs/path/codekg.sqlite", "--lancedb", "/abs/path/lancedb"]
+      "args": ["--repo", "/abs/path", "--db", "/abs/path/.codekg/graph.sqlite", "--lancedb", "/abs/path/.codekg/lancedb"]
     }
   }
 }
@@ -434,17 +309,15 @@ See [`docs/MCP.md`](MCP.md) for the complete reference.
 | Goal | Recommended path |
 |---|---|
 | Share the library with the Python community | **PyPI** (Option 1) |
-| Run the Streamlit app locally / on a server | **Docker + docker-compose** (Option 2) |
-| Quick public demo, no infra | **Streamlit Community Cloud** (Option 3) |
-| Persistent cloud deployment | **Fly.io** (Option 4) |
-| Distribute pre-built wheels without PyPI | **GitHub Releases** (Option 5) |
-| Integrate with AI agents / IDEs | **MCP Server** (Option 6) |
+| Quick public demo, no infra | **Streamlit Community Cloud** (Option 2) |
+| Persistent cloud deployment | **Fly.io** (Option 3) |
+| Distribute pre-built wheels without PyPI | **GitHub Releases** (Option 4) |
+| Integrate with AI agents / IDEs | **MCP Server** (Option 5) |
 
 ### Suggested release order
 
 1. **PyPI first** — the `pyproject.toml` is already complete; `poetry build && poetry publish` is all it takes.
-2. **Docker image** — build from the Dockerfile above and push to GHCR alongside the PyPI release.
-3. **MCP server** — add as a CLI entry point so agent users get it automatically with `pip install code-kg`.
+2. **MCP server** — add as a CLI entry point so agent users get it automatically with `pip install code-kg`.
 
 ---
 
@@ -459,4 +332,3 @@ See [`docs/MCP.md`](MCP.md) for the complete reference.
 - [ ] Smoke-test all 5 CLI entry points
 - [ ] `git tag v0.1.0 && git push origin v0.1.0`
 - [ ] `poetry publish` (or let GitHub Actions do it)
-- [ ] `docker build -t codekg:latest . && docker push ghcr.io/suchanek/codekg:latest`
