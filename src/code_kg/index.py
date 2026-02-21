@@ -269,7 +269,7 @@ class SemanticIndex:
         self.lancedb_dir.mkdir(parents=True, exist_ok=True)
         db = lancedb.connect(str(self.lancedb_dir))  # type: ignore[attr-defined]
 
-        if self.table_name in db.table_names():
+        if self.table_name in db.list_tables().tables:
             tbl = db.open_table(self.table_name)
             if wipe:
                 tbl.delete("id != ''")
