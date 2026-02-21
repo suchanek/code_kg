@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`tests/test_index.py`** — New comprehensive test suite (348 lines) covering `Embedder` ABC, `SentenceTransformerEmbedder` (fully mocked), `_build_index_text`, `_escape`, `_extract_distance`, and `SemanticIndex` build/search/cache integration tests using a lightweight `FakeEmbedder`.
 - **`.pre-commit-config.yaml`** — Added local `mypy` and `pytest` hooks so type-checking and tests run automatically on every commit.
 
 ### Changed
 
+- **`CLAUDE.md`** — Added "Agent Identity" section establishing that this Claude instance is the first CodeKG-equipped AI agent and mandating use of CodeKG MCP tools before reading files.
+- **`pyproject.toml`** — Development status upgraded from `3 - Alpha` to `4 - Beta`.
+- **`tests/test_kg.py`** — Extended with 341 lines of new tests: `_compute_span` missing-branch coverage, `_read_lines` (UTF-8, missing file, invalid bytes), `Snippet.to_dict()`, `QueryResult.print_summary()`, `SnippetPack.to_markdown()` with edges, and `CodeKG` lazy-property and pipeline-method tests with mocked `SemanticIndex`.
 - **`app.py` → `src/code_kg/app.py`** — Moved Streamlit visualizer into the package so it is bundled in the wheel and accessible after `pip install`. Updated `codekg_viz.py` to resolve `app.py` relative to the installed module rather than the repo root.
 - **`codekg_viz.py`** — Default port changed from 8501 to 8500; error message now includes the full resolved path of the missing `app.py`.
 - **`.codekg/` unified artifact directory** — All generated files (SQLite graph and LanceDB vector index) now live under `.codekg/` (`graph.sqlite`, `lancedb/`) instead of scattered root-level files. Updated across all CLI tools, the MCP server, `.mcp.json`, skills docs, and command definitions.
@@ -32,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`src/code_kg/index.py`** — Fixed LanceDB table-existence check: replaced deprecated `db.table_names()` with `db.list_tables().tables` to match the current LanceDB API.
 - **`src/code_kg/app.py`** — vis-network 9.x+ renders string `title` values as plain text rather than HTML. Added `fixHtmlTitles()` which runs after the network initializes and replaces each HTML string title with a DOM element so rich node tooltips render correctly.
 - **`src/code_kg/codekg.py`** — Tightened `enclosing_def` / `owner_id` type annotations; simplified `dst_id` assignment to a single `or` expression.
 - **`src/code_kg/index.py`** — Added fallback (`or 384`) for `get_sentence_embedding_dimension()` which can return `None`; suppressed unavoidable `lancedb.connect` type-ignore.

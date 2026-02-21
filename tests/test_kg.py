@@ -10,16 +10,20 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from code_kg.index import Embedder, SeedHit, SemanticIndex
 from code_kg.kg import (
     BuildStats,
     CodeKG,
     QueryResult,
+    Snippet,
     SnippetPack,
     _compute_span,
     _make_snippet,
+    _read_lines,
     _safe_join,
     _spans_overlap,
 )
@@ -396,3 +400,355 @@ def test_spans_overlap_non_overlapping():
 
 def test_spans_overlap_identical():
     assert _spans_overlap((5, 10), (5, 10)) is True
+
+
+# ---------------------------------------------------------------------------
+# _compute_span — missing branches
+# ---------------------------------------------------------------------------
+
+
+def test_compute_span_lineno_none_returns_whole_file():
+    # kind != "module", lineno=None → fallback to (1, min(file, max))
+    start, end = _compute_span("function", None, None, context=5, max_lines=50, file_nlines=100)
+    assert start == 1
+    assert end == 50
+
+
+def test_compute_span_end_lineno_none_uses_lineno_only():
+    # end_lineno is None → use lineno ± context
+    start, end = _compute_span("function", 10, None, context=3, max_lines=100, file_nlines=200)
+    assert start == 7  # 10 - 3
+    assert end == 13  # 10 + 3
+
+
+def test_compute_span_end_lineno_none_caps_at_max_lines():
+    start, end = _compute_span("function", 10, None, context=100, max_lines=5, file_nlines=200)
+    assert (end - start + 1) <= 5
+
+
+# ---------------------------------------------------------------------------
+# _read_lines
+# ---------------------------------------------------------------------------
+
+
+def test_read_lines_utf8_file(tmp_path):
+    p = tmp_path / "src.py"
+    p.write_text("line1\nline2\n", encoding="utf-8")
+    assert _read_lines(p) == ["line1", "line2"]
+
+
+def test_read_lines_missing_file(tmp_path):
+    assert _read_lines(tmp_path / "nonexistent.py") == []
+
+
+def test_read_lines_invalid_utf8_fallback(tmp_path):
+    p = tmp_path / "bad.py"
+    p.write_bytes(b"good line\n\xff\xfe bad bytes\n")
+    lines = _read_lines(p)
+    assert len(lines) >= 1  # must not raise; invalid bytes silently dropped
+
+
+# ---------------------------------------------------------------------------
+# Snippet
+# ---------------------------------------------------------------------------
+
+
+def test_snippet_to_dict():
+    sn = Snippet(path="mod.py", start=1, end=5, text="    1: def foo():\n    2:     pass")
+    d = sn.to_dict()
+    assert d == {"path": "mod.py", "start": 1, "end": 5, "text": sn.text}
+
+
+# ---------------------------------------------------------------------------
+# QueryResult — print_summary
+# ---------------------------------------------------------------------------
+
+
+def test_queryresult_print_summary_no_nodes(capsys):
+    qr = QueryResult(
+        query="empty query",
+        seeds=0,
+        expanded_nodes=0,
+        returned_nodes=0,
+        hop=1,
+        rels=["CALLS"],
+        nodes=[],
+        edges=[],
+    )
+    qr.print_summary()
+    out = capsys.readouterr().out
+    assert "empty query" in out
+    assert "EDGES" in out
+
+
+def test_queryresult_print_summary_with_nodes_and_edges(capsys):
+    qr = QueryResult(
+        query="find connection",
+        seeds=1,
+        expanded_nodes=3,
+        returned_nodes=2,
+        hop=1,
+        rels=["CALLS", "CONTAINS"],
+        nodes=[
+            {
+                "kind": "function",
+                "module_path": "mod.py",
+                "qualname": "foo",
+                "name": "foo",
+                "id": "fn:mod.py:foo",
+                "docstring": "Does something useful.",
+            },
+            {
+                "kind": "class",
+                "module_path": "mod.py",
+                "qualname": "Bar",
+                "name": "Bar",
+                "id": "cls:mod.py:Bar",
+                "docstring": None,
+            },
+        ],
+        edges=[{"rel": "CONTAINS", "src": "cls:mod.py:Bar", "dst": "fn:mod.py:foo"}],
+    )
+    qr.print_summary()
+    out = capsys.readouterr().out
+    assert "find connection" in out
+    assert "fn:mod.py:foo" in out
+    assert "Does something useful." in out
+    assert "CONTAINS" in out
+
+
+# ---------------------------------------------------------------------------
+# SnippetPack — to_markdown with edges
+# ---------------------------------------------------------------------------
+
+
+def test_snippetpack_to_markdown_with_edges():
+    sp = SnippetPack(
+        query="q",
+        seeds=1,
+        expanded_nodes=2,
+        returned_nodes=1,
+        hop=1,
+        rels=["CALLS"],
+        model="m",
+        nodes=[],
+        edges=[{"rel": "CALLS", "src": "fn:a.py:foo", "dst": "fn:b.py:bar"}],
+    )
+    md = sp.to_markdown()
+    assert "fn:a.py:foo" in md
+    assert "fn:b.py:bar" in md
+    assert "CALLS" in md
+
+
+# ---------------------------------------------------------------------------
+# Fake embedder reused from index tests (avoid real model loading)
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbedder(Embedder):
+    dim = 4
+
+    def embed_texts(self, texts):
+        return [[0.1, 0.2, 0.3, 0.4] for _ in texts]
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — embedder property
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_embedder_property_lazy_init(tmp_path):
+    from code_kg import kg as kg_mod
+
+    fake_emb = _FakeEmbedder()
+    with patch.object(kg_mod, "SentenceTransformerEmbedder", return_value=fake_emb):
+        kg = CodeKG(tmp_path, tmp_path / "db.sqlite", tmp_path / "ldb")
+        emb = kg.embedder
+        assert emb is fake_emb
+        # Second access must return the cached instance (no second construction)
+        assert kg.embedder is fake_emb
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — index property
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_index_property_lazy_init(tmp_path):
+    kg = CodeKG(tmp_path, tmp_path / "db.sqlite", tmp_path / "ldb")
+    kg._embedder = _FakeEmbedder()  # skip real embedder init
+
+    idx = kg.index
+    assert isinstance(idx, SemanticIndex)
+    # Cached on second access
+    assert kg.index is idx
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — build_index (mock SemanticIndex.build to skip real LanceDB)
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_build_index(tmp_path):
+    kg = _make_kg(tmp_path, {"mod.py": "def foo(): pass\n"})
+
+    mock_idx = MagicMock()
+    mock_idx.build.return_value = {"indexed_rows": 7, "dim": 384}
+    kg._index = mock_idx
+
+    stats = kg.build_index()
+    assert stats.indexed_rows == 7
+    assert stats.index_dim == 384
+    kg.close()
+
+
+def test_codekg_build_index_wipe_flag(tmp_path):
+    kg = _make_kg(tmp_path, {"mod.py": "def foo(): pass\n"})
+
+    mock_idx = MagicMock()
+    mock_idx.build.return_value = {"indexed_rows": 3, "dim": 4}
+    kg._index = mock_idx
+
+    kg.build_index(wipe=True)
+    mock_idx.build.assert_called_once_with(kg.store, wipe=True)
+    kg.close()
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — build (full pipeline, LanceDB mocked)
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_build(tmp_path):
+    repo = tmp_path / "repo"
+    _write_repo(repo, {"mod.py": "def foo(): pass\n"})
+    kg = CodeKG(repo, tmp_path / "codekg.sqlite", tmp_path / "ldb")
+
+    mock_idx = MagicMock()
+    mock_idx.build.return_value = {"indexed_rows": 3, "dim": 384}
+    kg._index = mock_idx
+
+    stats = kg.build(wipe=True)
+    assert stats.indexed_rows == 3
+    assert stats.index_dim == 384
+    kg.close()
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — query (real store, mocked index.search)
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_query_returns_query_result(tmp_path):
+    kg = _make_kg(tmp_path, {"mod.py": "def foo(): pass\n"})
+    fns = kg.store.query_nodes(kinds=["function"])
+    assert fns
+    fn_id = fns[0]["id"]
+
+    mock_idx = MagicMock()
+    mock_idx.search.return_value = [
+        SeedHit(
+            id=fn_id,
+            kind="function",
+            name="foo",
+            qualname="foo",
+            module_path="mod.py",
+            distance=0.1,
+            rank=0,
+        )
+    ]
+    kg._index = mock_idx
+
+    result = kg.query("find foo", k=3)
+    assert result.query == "find foo"
+    assert result.seeds == 1
+    assert result.returned_nodes >= 1
+    assert any(n["id"] == fn_id for n in result.nodes)
+    kg.close()
+
+
+def test_codekg_query_include_symbols_flag(tmp_path):
+    kg = _make_kg(tmp_path, {"mod.py": "def foo(): pass\n"})
+    fns = kg.store.query_nodes(kinds=["function"])
+    fn_id = fns[0]["id"]
+
+    mock_idx = MagicMock()
+    mock_idx.search.return_value = [
+        SeedHit(
+            id=fn_id,
+            kind="function",
+            name="foo",
+            qualname="foo",
+            module_path="mod.py",
+            distance=0.1,
+            rank=0,
+        )
+    ]
+    kg._index = mock_idx
+
+    # include_symbols=True should not raise and still return a QueryResult
+    result = kg.query("find foo", k=3, include_symbols=True)
+    assert result.returned_nodes >= 1
+    kg.close()
+
+
+# ---------------------------------------------------------------------------
+# CodeKG — pack (real store + files, mocked index.search)
+# ---------------------------------------------------------------------------
+
+
+def test_codekg_pack_returns_snippet_pack(tmp_path):
+    kg = _make_kg(tmp_path, {"mod.py": "def foo():\n    pass\n"})
+    fns = kg.store.query_nodes(kinds=["function"])
+    assert fns
+    fn_id = fns[0]["id"]
+
+    mock_idx = MagicMock()
+    mock_idx.search.return_value = [
+        SeedHit(
+            id=fn_id,
+            kind="function",
+            name="foo",
+            qualname="foo",
+            module_path="mod.py",
+            distance=0.1,
+            rank=0,
+        )
+    ]
+    kg._index = mock_idx
+
+    pack = kg.pack("find foo", k=3)
+    assert isinstance(pack, SnippetPack)
+    assert pack.query == "find foo"
+    assert isinstance(pack.nodes, list)
+    assert isinstance(pack.edges, list)
+    # Internal keys must be stripped
+    for n in pack.nodes:
+        assert not any(k.startswith("_") for k in n)
+    kg.close()
+
+
+def test_codekg_pack_max_nodes_limit(tmp_path):
+    src = "\n".join(f"def fn{i}(): pass" for i in range(10))
+    kg = _make_kg(tmp_path, {"mod.py": src})
+    fns = kg.store.query_nodes(kinds=["function"])
+    assert len(fns) >= 3
+
+    mock_idx = MagicMock()
+    mock_idx.search.return_value = [
+        SeedHit(
+            id=n["id"],
+            kind="function",
+            name=n["name"],
+            qualname=n["qualname"] or "",
+            module_path="mod.py",
+            distance=float(i) * 0.1,
+            rank=i,
+        )
+        for i, n in enumerate(fns)
+    ]
+    kg._index = mock_idx
+
+    pack = kg.pack("many functions", k=len(fns), max_nodes=2)
+    assert pack.returned_nodes <= 2
+    kg.close()

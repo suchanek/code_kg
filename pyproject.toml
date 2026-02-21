@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "code-kg"
-version = "0.1.0"
+version = "0.1.1"
 description = "A tool to build a searchable knowledge graph from Python repositories"
 authors = ["Eric G. Suchanek, PhD <suchanek@mac.com>"]
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -13,7 +13,7 @@ homepage = "https://github.com/suchanek/code_kg"
 repository = "https://github.com/suchanek/code_kg"
 keywords = ["knowledge-graph", "code-analysis", "ast", "lancedb", "sqlite", "semantic-search"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
