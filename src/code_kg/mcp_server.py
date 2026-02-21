@@ -262,8 +262,8 @@ def main(argv: list | None = None) -> None:
     args = _parse_args(argv)
 
     repo = Path(args.repo).resolve()
-    db = Path(args.db)
-    lancedb_dir = Path(args.lancedb)
+    db = Path(args.db) if Path(args.db).is_absolute() else repo / args.db
+    lancedb_dir = Path(args.lancedb) if Path(args.lancedb).is_absolute() else repo / args.lancedb
 
     if not db.exists():
         print(
