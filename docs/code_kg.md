@@ -29,19 +29,19 @@ Text search and IDE symbol lookup are brittle. LLMs provide semantic intuition b
 
 ## 2. Design Principles
 
-1. **Structure is authoritative**  
+1. **Structure is authoritative**
    The AST-derived graph is the source of truth.
 
-2. **Semantics accelerate, never decide**  
+2. **Semantics accelerate, never decide**
    Vector embeddings seed and rank retrieval but never invent structure.
 
-3. **Everything is traceable**  
+3. **Everything is traceable**
    Nodes and edges map to concrete files and line numbers.
 
-4. **Determinism over heuristics**  
+4. **Determinism over heuristics**
    Identical input yields identical output.
 
-5. **Composable artifacts**  
+5. **Composable artifacts**
    SQLite for structure, LanceDB for vectors, Markdown/JSON for consumption.
 
 ---

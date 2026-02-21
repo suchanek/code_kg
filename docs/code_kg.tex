@@ -1,4 +1,4 @@
-\documentclass[11pt]{article}
+\documentclass[10pt]{article}
 
 \usepackage[margin=1in]{geometry}
 \usepackage{setspace}
@@ -8,6 +8,9 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{cite}
+\setlist{noitemsep, topsep=3pt, partopsep=0pt}
 
 \setstretch{1.15}
 
@@ -28,7 +31,9 @@ CodeKG: A Deterministic Knowledge Graph for Python Codebases\\
 with Semantic Indexing and Source-Grounded Snippet Packing
 }
 
-\author{Eric G. Suchanek, PhD}
+\author{Eric G. Suchanek, PhD\\
+Flux-Frontiers, Liberty Township OH\\
+\texttt{suchanek@mac.com}}
 \date{}
 
 \begin{document}
@@ -54,6 +59,13 @@ The design treats program structure as ground truth and uses semantic embeddings
 strictly as an acceleration layer. The result is a searchable, traceable
 representation of a codebase that supports precise navigation, contextual snippet
 extraction, and downstream reasoning without hallucination.
+
+When coupled with a downstream language model for synthesis, CodeKG constitutes a
+form of knowledge-graph-augmented generation (KG-RAG). It differs fundamentally
+from the LLM-constructed graph approach of Microsoft GraphRAG~\cite{edge2024graphrag}:
+the knowledge graph is \emph{derived} from formal syntax rather than \emph{inferred}
+from natural language, making it structurally correct by construction rather than
+probabilistically approximate. We term this \emph{Structural KG-RAG}.
 \end{abstract}
 
 \section{Introduction}
@@ -76,6 +88,13 @@ and typed edges (CONTAINS, CALLS, IMPORTS, INHERITS). That graph is stored in
 SQLite, which is the authoritative record. Semantic embeddings are then built on top
 of it---not instead of it---so that natural-language queries can find relevant
 entry points without inventing structure that is not there.
+
+This approach is deliberately inverted relative to systems such as Microsoft
+GraphRAG~\cite{edge2024graphrag}, which use an LLM to \emph{construct} a knowledge
+graph from unstructured text. In CodeKG, the LLM has no role in graph construction:
+the graph is extracted from formal syntax, and the LLM's role is to \emph{reason
+against} the resulting source-grounded context. Section~\ref{sec:comparison} develops
+this contrast in detail.
 
 \section{Design Principles}
 
@@ -352,18 +371,152 @@ Steps 1--3 are the build pipeline, run once (or on demand after code changes).
 Steps 4--7 execute on every query, typically in under a second for codebases up to
 several hundred thousand lines.
 
+\section{Comparison with LLM-Constructed Knowledge Graphs}
+\label{sec:comparison}
+
+The most directly relevant prior work is GraphRAG, introduced by Edge
+et al.~\cite{edge2024graphrag} at Microsoft Research. GraphRAG represents the
+dominant paradigm in graph-augmented retrieval: an LLM is used to extract entities
+and relationships from unstructured text documents, those entities are organized into
+a community hierarchy using graph partitioning, and community-level summaries are
+pregenerated to support downstream question answering over large corpora.
+
+CodeKG and GraphRAG share a surface resemblance---both augment retrieval with a
+knowledge graph---but differ in the origin, correctness guarantees, and intended
+use of that graph.
+
+\subsection{Graph Construction: Inferred vs.\ Derived}
+
+In GraphRAG, the knowledge graph is \emph{inferred} by an LLM from natural language
+text. Entity extraction is probabilistic: the model may miss entities, conflate
+similar ones, hallucinate relationships, or produce inconsistent descriptions across
+documents. The graph is only as reliable as the extraction prompt and the LLM's
+comprehension of each text unit.
+
+In CodeKG, the knowledge graph is \emph{derived} from the Python abstract syntax
+tree. Every node corresponds to a syntactically verified program element; every edge
+corresponds to a verified syntactic relationship. A \texttt{CALLS} edge from
+function~$A$ to function~$B$ exists because a call expression to~$B$ was found in
+the body of~$A$ at the recorded line number. The structural layer uses no LLM and
+contains no probabilistic components. The graph cannot hallucinate.
+
+\subsection{The Inversion of the LLM Role}
+
+This distinction reverses the role of the language model in the overall pipeline:
+
+\begin{itemize}
+\item In GraphRAG, the LLM \emph{constructs} the knowledge graph. The graph is a
+product of LLM inference; its correctness is bounded by LLM accuracy and is not
+independently verifiable.
+\item In CodeKG, the LLM \emph{consumes} the knowledge graph. The graph is a
+product of static analysis; the LLM receives source-grounded snippets with exact
+file paths and line numbers and reasons against them.
+\end{itemize}
+
+The consequence is a hard boundary on hallucination. In GraphRAG, errors introduced
+during graph construction propagate silently into query results---the system has no
+mechanism to detect that an extracted relationship is wrong. In CodeKG, every
+structural claim is verifiably correct by construction: each node ID encodes its
+file path and qualified name, and each snippet is extracted from the actual source
+at the recorded line span.
+
+\subsection{Call-Site Evidence}
+
+GraphRAG edges carry natural-language descriptions of relationships (e.g.,
+``Entity~A collaborates with Entity~B in the context of\ldots''), generated by the
+LLM and approximate. CodeKG \texttt{CALLS} edges carry machine-verifiable evidence:
+the exact line number and expression text of the call site, extracted directly from
+the AST. This enables a class of query that GraphRAG cannot support: \emph{where
+exactly is this function called, and in what syntactic context?}
+
+\subsection{Different Problem Domains}
+
+The two systems address different problems and are not in direct competition.
+
+GraphRAG targets \emph{global sensemaking} over unstructured text corpora. Its
+design optimises for questions like ``What are the main themes in this document
+collection?'' and scales to corpora exceeding one million tokens. It is appropriate
+when the input is natural language and the goal is synthesis across many documents.
+
+CodeKG targets \emph{structural navigation} of a formal, syntax-governed artifact.
+It is designed for questions like ``Which functions participate in the authentication
+flow?'', ``Where is this configuration value read, and which callers depend on it?'',
+and ``What is the call graph rooted at this entry point?'' It is precise where
+GraphRAG is approximate, because the input is code---a deterministic, machine-readable
+artifact---not prose.
+
+\subsection{Structural KG-RAG}
+
+When CodeKG is coupled with a downstream language model for synthesis, the combined
+system constitutes knowledge-graph-augmented generation~(KG-RAG). The specific
+flavor, however, is stronger than the general case. Because the knowledge graph is
+formally derived rather than LLM-inferred, the synthesis stage operates against a
+\emph{provably correct structural substrate}. Every piece of context passed to the
+LLM carries a verified file path, exact line span, and---for call relationships---a
+machine-extracted call-site expression. The LLM's claims are checkable: a node ID
+such as \texttt{fn:src/auth/jwt.py:JWTValidator.validate} at line~47 is a precise,
+stable, inspectable address.
+
+We term this \emph{Structural KG-RAG}: knowledge-graph-augmented generation in which
+the graph is extracted from formal syntax rather than inferred from natural language,
+and in which every piece of retrieved context has deterministic provenance traceable
+to the source. Table~\ref{tab:comparison} summarises the key distinctions.
+
+\begin{table}[h]
+\centering
+\caption{GraphRAG vs.\ CodeKG (Structural KG-RAG)}
+\label{tab:comparison}
+\begin{tabular}{lll}
+\toprule
+Property & GraphRAG~\cite{edge2024graphrag} & CodeKG \\
+\midrule
+Graph source        & LLM extraction from text     & AST (formal syntax)         \\
+Graph correctness   & Probabilistic                & Deterministic                \\
+Edge content        & NL relationship description  & Typed + call-site evidence   \\
+Provenance          & Document reference           & File path + exact line span  \\
+LLM role            & Builds the graph             & Reasons against the graph    \\
+Hallucination risk  & Present in graph construction & Bounded to synthesis only   \\
+Input domain        & Unstructured text            & Python source code           \\
+Query focus         & Global sensemaking           & Structural navigation        \\
+LLM required to build? & Yes                      & No                          \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \section{Conclusion}
 
 CodeKG shows that useful, auditable code understanding does not require a language
-model in the loop. Static analysis produces a precise structural record; semantic
-embeddings make that record navigable with natural language. Keeping the two layers
-explicit and separable means each can be evaluated, debugged, and improved
-independently.
+model in the loop for graph construction. Static analysis produces a precise
+structural record; semantic embeddings make that record navigable with natural
+language. Keeping the two layers explicit and separable means each can be evaluated,
+debugged, and improved independently.
 
 The layered architecture---\texttt{CodeGraph}, \texttt{GraphStore},
 \texttt{SemanticIndex}, \texttt{CodeKG}---cleanly separates concerns and makes the
 system straightforward to extend. The MCP server turns the query pipeline into a
 first-class tool for AI agents, giving them grounded, traceable access to codebase
 structure rather than asking them to reason from memory.
+
+The broader lesson is about where to place trust in an AI-assisted development
+workflow. Systems that use an LLM to construct the knowledge substrate introduce
+probabilistic error at the foundation, which propagates unchecked into every
+downstream reasoning step. CodeKG inverts this: the structural substrate is built
+from a deterministic formal process, and the LLM is positioned where it is most
+effective---synthesising and explaining a context pack whose every line is verified
+against the source. The result is a form of Structural KG-RAG that combines the
+navigability of natural-language queries with the correctness guarantees of static
+analysis.
+
+\begin{thebibliography}{1}
+
+\bibitem{edge2024graphrag}
+Darren Edge, Ha Trinh, Newman Cheng, Joshua Bradley, Alex Chao, Apurva Mody,
+Steven Truitt, and Jonathan Larson.
+\newblock From local to global: A graph {RAG} approach to query-focused
+summarization.
+\newblock \emph{arXiv preprint arXiv:2404.16130}, 2024.
+\newblock \url{https://arxiv.org/abs/2404.16130}
+
+\end{thebibliography}
 
 \end{document}

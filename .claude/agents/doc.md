@@ -293,4 +293,3 @@ Next Steps: <review needed or related docs to update>
 - **@agent-me** — When documentation reveals bugs in actual implementation
 - **@agent-ta** — When architectural decisions need ADR documentation
 - **@agent-cw** — When user-facing copy needs refinement
-

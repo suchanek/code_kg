@@ -1,16 +1,18 @@
-# code_kg
+
+[![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
+[![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/suchanek/code_kg/releases)
+[![CI](https://github.com/suchanek/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/suchanek/code_kg/actions/workflows/ci.yml)
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+
+<p align="center">
+  <img src="docs/logo.png" alt="CodeKG logo" width="320"/>
+</p>
 
 **CodeKG** — A Deterministic Knowledge Graph for Python Codebases
 with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Author: Eric G. Suchanek, PhD*
-
-
-[![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
-[![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/suchanek/code_kg/releases)
-[![Tests](https://github.com/suchanek/code_kg/actions/workflows/tests.yml/badge.svg)](https://github.com/suchanek/code_kg/actions/workflows/tests.yml)
-[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
 ---
 
@@ -18,9 +20,9 @@ with Semantic Indexing and Source-Grounded Snippet Packing
 
 CodeKG constructs a **deterministic, explainable knowledge graph** from a Python codebase using static analysis. The graph captures structural relationships — definitions, calls, imports, and inheritance — directly from the Python AST, stores them in SQLite, and augments retrieval with vector embeddings via LanceDB.
 
-Structure is treated as **ground truth**; semantic search is strictly an acceleration layer. The result is a searchable, auditable representation of a codebase that supports precise navigation, contextual snippet extraction, and downstream reasoning without hallucination.
+Structure is treated as **ground truth**; semantic search is strictly an acceleration layer. The result is a searchable, auditable representation of a codebase that supports precise navigation, contextual snippet extraction, and downstream reasoning without hallucination — making it an ideal retrieval engine for LLMs and a practical foundation for **Knowledge-Graph RAG (KRAG)**, in contrast to embedding-only approaches such as Amplify and probabilistic graph methods such as Microsoft GraphRAG.
 
-The system ships with a Python library, CLI tools, an interactive Streamlit web app, a Docker image, and an MCP server for AI agent integration.
+The system ships with a Python library, CLI tools, an interactive Streamlit web app, and an MCP server for AI agent integration.
 
 ---
 
@@ -182,25 +184,42 @@ poetry install --extras mcp
 
 **Requirements:** Python ≥ 3.10, < 3.13
 
-### Install the AI Agent Skill (optional)
+---
 
-After cloning and installing, run the skill installer to configure CodeKG for your AI agents. The script can be run from any target repository — it will configure that repo end-to-end:
+## Quick Start
+
+The fastest way to integrate CodeKG into any Python repository — run the one-line installer from within the repo you want to index:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
 ```
 
-**What the installer does:**
+The installer sets up the full **AI integration layer** end-to-end:
 
-1. Installs the `SKILL.md` reference files to `~/.claude/skills/codekg/`, `~/.kilocode/skills/codekg/`, and `~/.agents/skills/codekg/`
-2. Installs the `/codekg` slash command into the target repo (`.claude/commands/codekg.md`)
-3. Verifies or installs `codekg-mcp` via Poetry
-4. Builds the SQLite knowledge graph (`codekg.sqlite`) if not already present
-5. Builds the LanceDB semantic index (`codekg_lancedb/`) if not already present
-6. Writes `.mcp.json` for Claude Code and Kilo Code
-7. Writes `.vscode/mcp.json` for GitHub Copilot
+1. Installs `SKILL.md` reference files for Claude Code, Kilo Code, and other agents
+2. Installs the `/codekg` slash command for Cline
+3. Installs `codekg-mcp` if not present — prefers the latest GitHub release wheel (`pip install`), falls back to git source
+4. Builds the SQLite knowledge graph (`codekg.sqlite`) and LanceDB semantic index
+5. Writes MCP configuration for each provider:
+   - `.mcp.json` — Claude Code and Kilo Code
+   - `.vscode/mcp.json` — GitHub Copilot
 
-After the script completes, reload VS Code (`Cmd+Shift+P` → `Developer: Reload Window`) to activate the MCP servers.
+By default all providers are configured. Pass `--providers` to target specific ones, or `--dry-run` to preview what the script would do without making any changes:
+
+```bash
+# All providers (default)
+curl -fsSL .../install-skill.sh | bash -s -- --providers all
+
+# Claude Code and GitHub Copilot only
+curl -fsSL .../install-skill.sh | bash -s -- --providers claude,copilot
+
+# Preview without making changes
+curl -fsSL .../install-skill.sh | bash -s -- --dry-run
+
+# Available provider names: claude, kilo, copilot, cline
+```
+
+After the script completes, reload VS Code (`Cmd+Shift+P` → `Developer: Reload Window`) to activate the MCP server. GitHub Copilot will prompt you to **Trust** the server on first use.
 
 ---
 
@@ -299,47 +318,9 @@ The sidebar provides one-click **Build Graph**, **Build Index**, and **Build All
 
 ---
 
-## Docker
+## Docker _(work in progress)_
 
-CodeKG ships a Docker image that packages the Streamlit app with all heavy dependencies into a single portable container.
-
-### Quick Start
-
-```bash
-# Build the image
-docker build -t codekg:latest .
-
-# Run (analyse current directory)
-docker run -p 8501:8501 \
-  -v $(pwd):/workspace:ro \
-  -v codekg-data:/data \
-  codekg:latest
-```
-
-Open **http://localhost:8501** in your browser. Set **Repo root** to `/workspace` in the sidebar, then click **⚡ Build All**.
-
-### Docker Compose (recommended)
-
-```bash
-# Start (build if needed, detached)
-docker compose up -d
-
-# Analyse a specific repo
-REPO_ROOT=/path/to/your/repo docker compose up -d
-
-# Use a different host port
-CODEKG_PORT=8510 docker compose up -d
-
-# Stop (data volume preserved)
-docker compose down
-
-# Full reset (wipes graph data)
-docker compose down -v
-```
-
-The named volume **`codekg-data`** persists the SQLite graph and LanceDB index across container restarts. The repository is mounted read-only at `/workspace`.
-
-See [`docs/docker.md`](docs/docker.md) for the full Docker reference.
+A Docker image that packages the Streamlit app with all dependencies is included, but multi-repository support — cleanly switching which codebase is indexed without restarting the container — is still being worked out. This section will be expanded once that workflow is stable.
 
 ---
 

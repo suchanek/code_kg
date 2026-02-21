@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`.github/workflows/ci.yml`** — CI pipeline: ruff format/lint, mypy type-check, and pytest across Python 3.10/3.11/3.12 on every push and pull request to `main`.
+- **`.github/workflows/publish.yml`** — Release workflow: triggered on `v*` tags; runs tests, builds wheel + sdist via `poetry build`, and creates a GitHub Release with both artifacts attached. Distribution via GitHub Releases (not PyPI).
+- **`.pre-commit-config.yaml`** — pre-commit hook configuration: trailing-whitespace, end-of-file-fixer, YAML/TOML validation, merge-conflict detection, large-file guard (1 MB, excluding `docs/` binaries), debug-statement detection, ruff lint+format.
+- **`docs/logo.png`** — Project logo added to repository and displayed in README.
+
+### Changed
+
+- **`scripts/install-skill.sh`** — Major overhaul into a full AI integration layer installer:
+  - Added `--providers` flag (`claude`, `kilo`, `copilot`, `cline`, `all`; default `all`) to selectively configure MCP clients.
+  - Added `--dry-run` flag: prints every action that would be taken without making any changes.
+  - Added `--wipe` flag: forces rebuild of SQLite graph and LanceDB index.
+  - Installation now prefers the latest GitHub release wheel (`pip install … @ <wheel_url>`) over git source, falling back to `pip install … @ git+https://…`, then `poetry add` for Poetry-managed repos.
+  - Installer banner shows active providers; summary footer lists only configured providers.
+- **`README.md`** — Quick Start section moved to after Installation; updated to describe the installer accurately as an AI integration layer for Claude Code, Kilo Code, GitHub Copilot, and Cline; added `--providers`, `--dry-run`, and `--wipe` usage examples.
+- **`docs/code_kg.tex`** / **`docs/code_kg.pdf`** — Added organization affiliation (Flux-Frontiers, Liberty Township OH; suchanek@mac.com) to author block; rebuilt PDF.
+- **`docker/Dockerfile`**, **`docker/docker-compose.yml`** — Moved from repo root into `docker/` subdirectory.
+- **`.gitignore`** — Added `codekg_lancedb/` alongside existing `lancedb/` exclusion for generated vector index artifacts.
+- **`.pre-commit-config.yaml`** — Excluded `docs/*.png|jpg|jpeg|gif|pdf` from the large-file size check.
+
+### Added
+
 - **`src/code_kg/mcp_server.py`** — MCP server exposing `graph_stats`, `query_codebase`, `pack_snippets`, and `get_node` tools for AI agent integration via the Model Context Protocol.
 - **`Dockerfile`** + **`docker-compose.yml`** — Containerized deployment for the Streamlit visualizer app with multi-stage build and volume mounts for SQLite/LanceDB artifacts.
 - **`.dockerignore`** — Docker build exclusions.

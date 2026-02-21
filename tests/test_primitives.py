@@ -23,7 +23,6 @@ from code_kg.codekg import (
     rel_module_path,
 )
 
-
 # ---------------------------------------------------------------------------
 # node_id
 # ---------------------------------------------------------------------------
@@ -238,14 +237,7 @@ def test_extract_repo_import_from(tmp_path):
 def test_extract_repo_call_graph(tmp_path):
     _write_repo(
         tmp_path,
-        {
-            "mod.py": (
-                "def helper():\n"
-                "    pass\n"
-                "def main():\n"
-                "    helper()\n"
-            )
-        },
+        {"mod.py": ("def helper():\n    pass\ndef main():\n    helper()\n")},
     )
     _, edges = extract_repo(tmp_path)
     calls = [e for e in edges if e.rel == "CALLS"]
@@ -276,13 +268,7 @@ def test_extract_repo_deterministic(tmp_path):
     """Same input → same output (node/edge counts and IDs)."""
     _write_repo(
         tmp_path,
-        {
-            "mod.py": (
-                "class Foo:\n"
-                "    def run(self): pass\n"
-                "def bar(): pass\n"
-            )
-        },
+        {"mod.py": ("class Foo:\n    def run(self): pass\ndef bar(): pass\n")},
     )
     nodes1, edges1 = extract_repo(tmp_path)
     nodes2, edges2 = extract_repo(tmp_path)

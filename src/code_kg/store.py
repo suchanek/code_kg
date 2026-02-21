@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from code_kg.codekg import Edge, Node
 
@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_rel ON edges(rel);
 """
 
 # Default edge types used for graph expansion
-DEFAULT_RELS: Tuple[str, ...] = ("CONTAINS", "CALLS", "IMPORTS", "INHERITS")
+DEFAULT_RELS: tuple[str, ...] = ("CONTAINS", "CALLS", "IMPORTS", "INHERITS")
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ class GraphStore:
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
-        self._con: Optional[sqlite3.Connection] = None
+        self._con: sqlite3.Connection | None = None
 
     # ------------------------------------------------------------------
     # Connection management
@@ -135,7 +135,7 @@ class GraphStore:
             self._con.close()
             self._con = None
 
-    def __enter__(self) -> "GraphStore":
+    def __enter__(self) -> GraphStore:
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -208,9 +208,7 @@ class GraphStore:
                 e.src,
                 e.rel,
                 e.dst,
-                json.dumps(e.evidence, ensure_ascii=False)
-                if e.evidence is not None
-                else None,
+                json.dumps(e.evidence, ensure_ascii=False) if e.evidence is not None else None,
             )
             for e in edges
         ]
@@ -229,7 +227,7 @@ class GraphStore:
     # Read — single node
     # ------------------------------------------------------------------
 
-    def node(self, node_id: str) -> Optional[dict]:
+    def node(self, node_id: str) -> dict | None:
         """
         Fetch a single node by id.
 
@@ -252,9 +250,9 @@ class GraphStore:
     def query_nodes(
         self,
         *,
-        kinds: Optional[Sequence[str]] = None,
-        module: Optional[str] = None,
-    ) -> List[dict]:
+        kinds: Sequence[str] | None = None,
+        module: str | None = None,
+    ) -> list[dict]:
         """
         Return nodes matching optional filters.
 
@@ -262,8 +260,8 @@ class GraphStore:
         :param module: Restrict to nodes in this module path (exact match).
         :return: List of node dicts.
         """
-        clauses: List[str] = []
-        params: List[object] = []
+        clauses: list[str] = []
+        params: list[object] = []
 
         if kinds:
             placeholders = ",".join("?" for _ in kinds)
@@ -289,7 +287,7 @@ class GraphStore:
     # Read — edges
     # ------------------------------------------------------------------
 
-    def edges_within(self, node_ids: Set[str]) -> List[dict]:
+    def edges_within(self, node_ids: set[str]) -> list[dict]:
         """
         Return all edges where both ``src`` and ``dst`` are in *node_ids*.
 
@@ -301,9 +299,7 @@ class GraphStore:
 
         self.con.execute("DROP TABLE IF EXISTS _tmp_ids;")
         self.con.execute("CREATE TEMP TABLE _tmp_ids (id TEXT PRIMARY KEY);")
-        self.con.executemany(
-            "INSERT INTO _tmp_ids (id) VALUES (?)", [(i,) for i in node_ids]
-        )
+        self.con.executemany("INSERT INTO _tmp_ids (id) VALUES (?)", [(i,) for i in node_ids])
         rows = self.con.execute(
             """
             SELECT e.src, e.rel, e.dst, e.evidence
@@ -312,9 +308,7 @@ class GraphStore:
             JOIN _tmp_ids d ON d.id = e.dst
             """
         ).fetchall()
-        return [
-            {"src": r[0], "rel": r[1], "dst": r[2], "evidence": r[3]} for r in rows
-        ]
+        return [{"src": r[0], "rel": r[1], "dst": r[2], "evidence": r[3]} for r in rows]
 
     # ------------------------------------------------------------------
     # Graph traversal
@@ -322,11 +316,11 @@ class GraphStore:
 
     def expand(
         self,
-        seed_ids: Set[str],
+        seed_ids: set[str],
         *,
         hop: int = 1,
-        rels: Tuple[str, ...] = DEFAULT_RELS,
-    ) -> Dict[str, ProvMeta]:
+        rels: tuple[str, ...] = DEFAULT_RELS,
+    ) -> dict[str, ProvMeta]:
         """
         Expand the graph from *seed_ids* up to *hop* hops.
 
@@ -339,13 +333,11 @@ class GraphStore:
         :return: ``{node_id: ProvMeta}`` for all reachable nodes.
         """
         rels = tuple(rels)
-        meta: Dict[str, ProvMeta] = {
-            sid: ProvMeta(best_hop=0, via_seed=sid) for sid in seed_ids
-        }
-        frontier: Set[str] = set(seed_ids)
+        meta: dict[str, ProvMeta] = {sid: ProvMeta(best_hop=0, via_seed=sid) for sid in seed_ids}
+        frontier: set[str] = set(seed_ids)
 
         for h in range(1, hop + 1):
-            nxt: Set[str] = set()
+            nxt: set[str] = set()
             for nid in frontier:
                 rows = self.con.execute(
                     f"""
@@ -384,12 +376,8 @@ class GraphStore:
         :return: dict with ``total_nodes``, ``total_edges``,
                  ``node_counts``, ``edge_counts``.
         """
-        node_rows = self.con.execute(
-            "SELECT kind, COUNT(*) FROM nodes GROUP BY kind"
-        ).fetchall()
-        edge_rows = self.con.execute(
-            "SELECT rel, COUNT(*) FROM edges GROUP BY rel"
-        ).fetchall()
+        node_rows = self.con.execute("SELECT kind, COUNT(*) FROM nodes GROUP BY kind").fetchall()
+        edge_rows = self.con.execute("SELECT rel, COUNT(*) FROM edges GROUP BY rel").fetchall()
         total_nodes = self.con.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
         total_edges = self.con.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
         return {

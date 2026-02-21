@@ -54,18 +54,14 @@ def main() -> None:
         default=5,
         help="Extra context lines before/after definition span",
     )
-    p.add_argument(
-        "--max-lines", type=int, default=160, help="Max lines per snippet block"
-    )
+    p.add_argument("--max-lines", type=int, default=160, help="Max lines per snippet block")
     p.add_argument(
         "--max-nodes",
         type=int,
         default=50,
         help="Max nodes returned in pack (deterministic truncation)",
     )
-    p.add_argument(
-        "--format", choices=["json", "md"], default="md", help="Output format"
-    )
+    p.add_argument("--format", choices=["json", "md"], default="md", help="Output format")
     p.add_argument("--out", default="", help="Output path (default: stdout)")
     args = p.parse_args()
 

@@ -36,11 +36,11 @@ from code_kg.codekg import Edge, Node
 
 # Layered classes
 from code_kg.graph import CodeGraph
-from code_kg.store import DEFAULT_RELS, GraphStore, ProvMeta
-from code_kg.index import Embedder, SemanticIndex, SeedHit, SentenceTransformerEmbedder
+from code_kg.index import Embedder, SeedHit, SemanticIndex, SentenceTransformerEmbedder
 
 # Orchestrator + result types
 from code_kg.kg import BuildStats, CodeKG, QueryResult, Snippet, SnippetPack
+from code_kg.store import DEFAULT_RELS, GraphStore, ProvMeta
 
 __all__ = [
     # primitives

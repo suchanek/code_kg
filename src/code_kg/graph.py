@@ -13,7 +13,6 @@ Author: Eric G. Suchanek, PhD
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from code_kg.codekg import Edge, Node, extract_repo
 
@@ -37,14 +36,14 @@ class CodeGraph:
 
     def __init__(self, repo_root: str | Path) -> None:
         self.repo_root: Path = Path(repo_root).resolve()
-        self._nodes: Optional[List[Node]] = None
-        self._edges: Optional[List[Edge]] = None
+        self._nodes: list[Node] | None = None
+        self._edges: list[Edge] | None = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def extract(self, *, force: bool = False) -> "CodeGraph":
+    def extract(self, *, force: bool = False) -> CodeGraph:
         """
         Run AST extraction (cached after first call).
 
@@ -56,20 +55,20 @@ class CodeGraph:
         return self
 
     @property
-    def nodes(self) -> List[Node]:
+    def nodes(self) -> list[Node]:
         """Extracted nodes (calls :meth:`extract` if needed)."""
         if self._nodes is None:
             self.extract()
         return self._nodes  # type: ignore[return-value]
 
     @property
-    def edges(self) -> List[Edge]:
+    def edges(self) -> list[Edge]:
         """Extracted edges (calls :meth:`extract` if needed)."""
         if self._edges is None:
             self.extract()
         return self._edges  # type: ignore[return-value]
 
-    def result(self) -> Tuple[List[Node], List[Edge]]:
+    def result(self) -> tuple[list[Node], list[Edge]]:
         """Return ``(nodes, edges)`` tuple."""
         return self.nodes, self.edges
 
