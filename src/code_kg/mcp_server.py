@@ -110,6 +110,7 @@ def query_codebase(
     hop: int = 1,
     rels: str = "CONTAINS,CALLS,IMPORTS,INHERITS",
     include_symbols: bool = False,
+    max_nodes: int = 25,
 ) -> str:
     """
     Hybrid semantic + structural query over the codebase knowledge graph.
@@ -124,6 +125,7 @@ def query_codebase(
     :param rels: Comma-separated edge types to follow
                  (CONTAINS, CALLS, IMPORTS, INHERITS).
     :param include_symbols: Include low-level symbol nodes (default False).
+    :param max_nodes: Maximum nodes to return (default 25).
     :return: JSON string with keys: query, seeds, expanded_nodes,
              returned_nodes, hop, rels, nodes, edges.
     """
@@ -134,6 +136,7 @@ def query_codebase(
         hop=hop,
         rels=rel_tuple or DEFAULT_RELS,
         include_symbols=include_symbols,
+        max_nodes=max_nodes,
     )
     return result.to_json()
 
@@ -146,8 +149,8 @@ def pack_snippets(
     rels: str = "CONTAINS,CALLS,IMPORTS,INHERITS",
     include_symbols: bool = False,
     context: int = 5,
-    max_lines: int = 160,
-    max_nodes: int = 50,
+    max_lines: int = 60,
+    max_nodes: int = 15,
 ) -> str:
     """
     Hybrid query + source-grounded snippet extraction.
@@ -161,8 +164,8 @@ def pack_snippets(
     :param rels: Comma-separated edge types to follow.
     :param include_symbols: Include symbol nodes (default False).
     :param context: Extra context lines around each definition (default 5).
-    :param max_lines: Maximum lines per snippet block (default 160).
-    :param max_nodes: Maximum nodes to include in the pack (default 50).
+    :param max_lines: Maximum lines per snippet block (default 60).
+    :param max_nodes: Maximum nodes to include in the pack (default 15).
     :return: Markdown string with source-grounded code snippets.
     """
     rel_tuple = tuple(r.strip() for r in rels.split(",") if r.strip())
