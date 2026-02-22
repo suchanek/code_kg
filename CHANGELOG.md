@@ -7,131 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] - 2026-02-21
+
 ### Added
 
-- **`src/code_kg/kg.py`**, **`src/code_kg/mcp_server.py`** — `query_codebase` now accepts a `max_nodes` parameter (default 25) that caps the number of nodes returned, preventing unbounded result sets from flooding agent context windows.
+- **`src/code_kg/__main__.py`** — Subcommand dispatcher enabling `python -m code_kg <subcommand>` invocation without an activated venv. Maps `build-sqlite`, `build-lancedb`, `query`, `pack`, `viz`, and `mcp` to their respective `main()` entry points; rewrites `sys.argv` so each module's argparse sees the correct `prog` name in `--help` output.
+- **`src/code_kg/mcp_server.py`** — MCP server exposing `graph_stats`, `query_codebase`, `pack_snippets`, and `get_node` tools for AI agent integration via the Model Context Protocol. `query_codebase` now accepts a `max_nodes` parameter (default 25) that caps the number of nodes returned, preventing unbounded result sets from flooding agent context windows.
+- **`src/code_kg/graph.py`** — `CodeGraph`: OOP wrapper around `extract_repo()` providing a cached, chainable interface to pure AST extraction with no side effects.
+- **`src/code_kg/store.py`** — `GraphStore`: SQLite persistence layer replacing the removed `codekg_sqlite.py`; exposes `write()`, `query_neighbors()`, and provenance-aware graph traversal via `ProvMeta`.
+- **`src/code_kg/index.py`** — `SemanticIndex` + pluggable `Embedder` abstraction replacing `codekg_lancedb.py`; includes `SentenceTransformerEmbedder` and `SeedHit` result type for typed semantic search results.
+- **`src/code_kg/kg.py`** — `CodeKG` top-level orchestrator owning the full pipeline (repo → `CodeGraph` → `GraphStore` → `SemanticIndex` → results); defines structured result types `BuildStats`, `QueryResult`, `Snippet`, and `SnippetPack`.
+- **`tests/test_index.py`** — Comprehensive test suite (348 lines) covering `Embedder` ABC, `SentenceTransformerEmbedder` (fully mocked), `_build_index_text`, `_escape`, `_extract_distance`, and `SemanticIndex` build/search/cache integration tests using a lightweight `FakeEmbedder`.
+- **`tests/test_graph.py`**, **`tests/test_kg.py`**, **`tests/test_store.py`** — Full unit test suites for the three new layered classes.
+- **`.github/workflows/ci.yml`** — CI pipeline: ruff format/lint, mypy type-check, and pytest on every push and PR to `main`.
+- **`.github/workflows/publish.yml`** — Release workflow: triggered on `v*` tags; runs tests, builds wheel + sdist via `poetry build`, and creates a GitHub Release with both artifacts attached. Distribution via GitHub Releases (not PyPI).
+- **`.pre-commit-config.yaml`** — Pre-commit hooks: trailing-whitespace, end-of-file-fixer, YAML/TOML validation, merge-conflict detection, large-file guard, debug-statement detection, ruff lint+format, local mypy and pytest hooks.
+- **`.mcp.json`** — Project-level MCP server configuration for Claude Code, wiring `copilot-memory`, `skills-copilot`, `task-copilot`, and `codekg` servers.
+- **`CLAUDE.md`** — Project instructions for Claude Code with "Agent Identity" section, agent roster, session management, and project-specific rules.
+- **`.claude/agents/`** — Thirteen specialized Claude agent configurations: `cco`, `cw`, `do`, `doc`, `kc`, `me`, `qa`, `sd`, `sec`, `ta`, `uid`, `uids`, `uxd`.
+- **`.claude/commands/`** — Custom Claude command definitions: `changelog-commit`, `continue`, `protocol`, `setup-mcp`.
+- **`docs/Architecture.md`** — Comprehensive architecture document covering design principles, data model, build pipeline, hybrid query model, ranking, snippet packing, call-site extraction, MCP layer, and deployment topology.
+- **`docs/MCP.md`** — MCP server reference documentation covering tool signatures, usage examples, and client configuration.
+- **`docs/deployment.md`** — Deployment guide covering local, Docker, and Claude Desktop/Code integration.
+- **`docs/docker.md`** — Docker setup and usage guide.
+- **`docs/logo.png`** — Project logo added to repository and displayed in README.
+- **`docker/Dockerfile`** + **`docker/docker-compose.yml`** — Containerized deployment for the Streamlit visualizer app.
+- **`.vscode/extensions.json`** — Recommended VSCode extensions for the project.
 
 ### Changed
 
 - **`src/code_kg/kg.py`**, **`src/code_kg/mcp_server.py`** — `pack_snippets` defaults tightened: `max_lines` reduced from 160 → 60 and `max_nodes` from 50 → 15, keeping snippet packs concise and token-efficient by default.
-
----
-
-### Added
-
-- **`src/code_kg/__main__.py`** — New subcommand dispatcher enabling `python -m code_kg <subcommand> [args…]` invocation. Maps `build-sqlite`, `build-lancedb`, `query`, `pack`, `viz`, and `mcp` to their respective `main()` entry points; rewrites `sys.argv` so each module's argparse sees a clean argument list with the correct `prog` name in `--help` output. Allows CodeKG to be used without activating a virtual environment or relying on `poetry run`, as long as the package is installed.
-
-### Changed
-
-- **`README.md`** — CLI Usage section rewritten to use `python -m code_kg <subcommand>` as the primary invocation pattern. Added dev-workflow note explaining `poetry run python -m code_kg` for contributors. Corrected all bare `codekg-*` command references that assumed scripts were on `PATH`.
-- **`scripts/install-skill.sh`** — Replaced `CODEKG_BIN` / `_POETRY_RUN` detection with `PYTHON_BIN`: detects the correct Python interpreter by checking `.venv/bin/python` first, then `python3` on PATH, then installing via `pip`. All build commands now use `"${PYTHON_BIN}" -m code_kg build-sqlite|build-lancedb` instead of `poetry run codekg-*`. MCP configs (`.mcp.json`, `.vscode/mcp.json`) now write `"command": "<python>"` with `"-m", "code_kg", "mcp"` as the first args, so the server works without venv activation. Removed dead `_discover_poetry` / `POETRY_BIN` code and the `poetry add` fallback.
-
----
-
-### Added
-
-- **`tests/test_index.py`** — New comprehensive test suite (348 lines) covering `Embedder` ABC, `SentenceTransformerEmbedder` (fully mocked), `_build_index_text`, `_escape`, `_extract_distance`, and `SemanticIndex` build/search/cache integration tests using a lightweight `FakeEmbedder`.
-- **`.pre-commit-config.yaml`** — Added local `mypy` and `pytest` hooks so type-checking and tests run automatically on every commit.
-
-### Changed
-
-- **`CLAUDE.md`** — Added "Agent Identity" section establishing that this Claude instance is the first CodeKG-equipped AI agent and mandating use of CodeKG MCP tools before reading files.
-- **`pyproject.toml`** — Development status upgraded from `3 - Alpha` to `4 - Beta`.
-- **`tests/test_kg.py`** — Extended with 341 lines of new tests: `_compute_span` missing-branch coverage, `_read_lines` (UTF-8, missing file, invalid bytes), `Snippet.to_dict()`, `QueryResult.print_summary()`, `SnippetPack.to_markdown()` with edges, and `CodeKG` lazy-property and pipeline-method tests with mocked `SemanticIndex`.
-- **`app.py` → `src/code_kg/app.py`** — Moved Streamlit visualizer into the package so it is bundled in the wheel and accessible after `pip install`. Updated `codekg_viz.py` to resolve `app.py` relative to the installed module rather than the repo root.
-- **`codekg_viz.py`** — Default port changed from 8501 to 8500; error message now includes the full resolved path of the missing `app.py`.
-- **`.codekg/` unified artifact directory** — All generated files (SQLite graph and LanceDB vector index) now live under `.codekg/` (`graph.sqlite`, `lancedb/`) instead of scattered root-level files. Updated across all CLI tools, the MCP server, `.mcp.json`, skills docs, and command definitions.
-- **CLI defaults (zero-config)** — `--repo`, `--db`, `--lancedb`, and `--repo-root` args on all CLI entry points (`codekg-build-sqlite`, `codekg-build-lancedb`, `codekg-query`, `codekg-pack`, `codekg-mcp`) are no longer required; they default to `.` / `.codekg/graph.sqlite` / `.codekg/lancedb` so the tools work out-of-the-box when run from the repo root.
-- **`.gitignore`** — Replaced individual artifact patterns (`lancedb/`, `codekg_lancedb/`, `*.sqlite`, `*.sqlite-wal`, `*.sqlite-shm`) with the single `.codekg/` directory exclusion. Added `.mcp.json` as a local-config exclusion (generated by the installer with absolute paths).
-- **`.github/workflows/ci.yml`** — Simplified test matrix to Python 3.12 only (removed 3.10/3.11 matrix); coverage upload is now unconditional.
-- **`scripts/install-skill.sh`** — `LANCEDB_DIR` is now unconditionally set to `.codekg/lancedb`; removed legacy path detection that caused the installer to skip rebuilding the vector index when a stale `codekg_lancedb/` or `lancedb/` directory existed. Added `mkdir -p` to create `.codekg/` before the SQLite build step.
-- **`README.md`**, **`docs/Architecture.md`**, **`docs/MCP.md`**, **`docs/code_kg.md`**, **`docs/code_kg_medium.md`** — All CLI examples, config snippets, and artifact references updated to `.codekg/` paths.
-- **`docs/deployment.md`** — Removed Docker deployment option; renumbered remaining deployment options (Streamlit Cloud → 2, Fly.io → 3, GitHub Releases → 4, MCP Server → 5); simplified CLI examples to use zero-config defaults.
-- **`.claude/skills/codekg/`**, **`.claude/commands/setup-mcp.md`** — Path references updated to `.codekg/graph.sqlite` and `.codekg/lancedb` across `SKILL.md`, `clinerules.md`, `references/installation.md`, and `setup-mcp.md`.
+- **`app.py` → `src/code_kg/app.py`** — Moved Streamlit visualizer into the package so it is bundled in the wheel and accessible after `pip install`. Major enhancements: interactive pyvis graph with gold-bordered seed nodes, rich tooltips, floating detail panel, tabbed UI (Graph / Query / Snippets). Default port changed from 8501 to 8500.
+- **`scripts/install-skill.sh`** — Full rewrite into an AI integration layer installer. Replaced `CODEKG_BIN`/`_POETRY_RUN` with `PYTHON_BIN` detection (`.venv/bin/python` → `python3` on PATH → `pip install`). Build commands use `"${PYTHON_BIN}" -m code_kg`. MCP configs written with absolute python path and `-m code_kg mcp` args. Added `--providers` flag (`claude`, `kilo`, `copilot`, `cline`, `all`), `--dry-run`, and `--wipe` flags. `LANCEDB_DIR` unconditionally set to `.codekg/lancedb`; removed legacy path detection.
+- **`.codekg/` unified artifact directory** — All generated files (SQLite graph and LanceDB vector index) now live under `.codekg/` (`graph.sqlite`, `lancedb/`). Updated across all CLI tools, the MCP server, `.mcp.json`, skills docs, command definitions, `.gitignore`, and all documentation.
+- **CLI defaults (zero-config)** — `--repo`, `--db`, `--lancedb`, and `--repo-root` args on all CLI entry points are no longer required; they default to `.` / `.codekg/graph.sqlite` / `.codekg/lancedb`.
+- **`__init__.py`** — Public API overhauled to expose `CodeGraph`, `GraphStore`, `SemanticIndex`, `CodeKG`, and all result types as top-level imports; low-level `Node`/`Edge` primitives retained under the locked v0 contract.
+- **`tests/test_kg.py`** — Extended with 341 lines of new tests: `_compute_span`, `_read_lines`, `Snippet.to_dict()`, `QueryResult.print_summary()`, `SnippetPack.to_markdown()`, and `CodeKG` lazy-property and pipeline-method tests with mocked `SemanticIndex`.
+- **`pyproject.toml`** — Development status upgraded from `3 - Alpha` to `4 - Beta`; added MCP and Docker-related dependencies.
+- **`README.md`** — Completely rewritten with full project overview, MCP server documentation, Docker deployment, Claude Code integration guide, and `python -m code_kg` as the primary CLI invocation.
+- **`docs/Architecture.md`**, **`docs/MCP.md`**, **`docs/deployment.md`** — All CLI examples and artifact references updated to `.codekg/` paths; MCP layer architecture and deployment topology expanded.
+- **`.github/workflows/ci.yml`** — Simplified test matrix to Python 3.12 only; coverage upload unconditional.
 - **`.vscode/mcp.json`** — Updated CodeKG MCP server args to use `.codekg/graph.sqlite` and `.codekg/lancedb`.
-- **`__version__`** — Bumped to `0.1.1`.
+- **`tests/test_codekg_v0.py`** — Renamed to `tests/test_primitives.py` to reflect its scope.
+- **`__version__`** — Bumped to `0.2.0`.
 
 ### Removed
 
-- **`.streamlit/config.toml`** — Deleted; Streamlit server configuration is no longer bundled in the repository now that the app is part of the installed package.
+- **`codekg_sqlite.py`** — Replaced by `src/code_kg/store.py` (`GraphStore`).
+- **`codekg_lancedb.py`** — Replaced by `src/code_kg/index.py` (`SemanticIndex`).
+- **`.streamlit/config.toml`** — Streamlit server configuration no longer bundled; app is part of the installed package.
+- **`pyproject.old.toml`** — Stale backup removed.
+- **`docs/code_kg.synctex.gz`** — Generated LaTeX artifact removed from version control.
 
 ### Fixed
 
-- **`src/code_kg/index.py`** — Fixed LanceDB table-existence check: replaced deprecated `db.table_names()` with `db.list_tables().tables` to match the current LanceDB API.
-- **`src/code_kg/app.py`** — vis-network 9.x+ renders string `title` values as plain text rather than HTML. Added `fixHtmlTitles()` which runs after the network initializes and replaces each HTML string title with a DOM element so rich node tooltips render correctly.
-- **`src/code_kg/codekg.py`** — Tightened `enclosing_def` / `owner_id` type annotations; simplified `dst_id` assignment to a single `or` expression.
-- **`src/code_kg/index.py`** — Added fallback (`or 384`) for `get_sentence_embedding_dimension()` which can return `None`; suppressed unavoidable `lancedb.connect` type-ignore.
+- **`src/code_kg/index.py`** — Fixed LanceDB table-existence check: replaced deprecated `db.table_names()` with `db.list_tables().tables`; added fallback (`or 384`) for `get_sentence_embedding_dimension()` which can return `None`.
+- **`src/code_kg/app.py`** — vis-network 9.x+ renders string `title` values as plain text; added `fixHtmlTitles()` to replace HTML string titles with DOM elements so rich tooltips render correctly.
+- **`src/code_kg/codekg.py`** — Tightened `enclosing_def`/`owner_id` type annotations; simplified `dst_id` assignment.
 - **`src/code_kg/kg.py`** — Replaced `file_cache.get()` + re-assign pattern with `if mp not in file_cache` for correct cache population.
 
 ---
 
-### Added
+## [0.1.0] - 2026-02-21
 
-- **`.github/workflows/ci.yml`** — CI pipeline: ruff format/lint, mypy type-check, and pytest across Python 3.10/3.11/3.12 on every push and pull request to `main`.
-- **`.github/workflows/publish.yml`** — Release workflow: triggered on `v*` tags; runs tests, builds wheel + sdist via `poetry build`, and creates a GitHub Release with both artifacts attached. Distribution via GitHub Releases (not PyPI).
-- **`.pre-commit-config.yaml`** — pre-commit hook configuration: trailing-whitespace, end-of-file-fixer, YAML/TOML validation, merge-conflict detection, large-file guard (1 MB, excluding `docs/` binaries), debug-statement detection, ruff lint+format.
-- **`docs/logo.png`** — Project logo added to repository and displayed in README.
-
-### Changed
-
-- **`scripts/install-skill.sh`** — Major overhaul into a full AI integration layer installer:
-  - Added `--providers` flag (`claude`, `kilo`, `copilot`, `cline`, `all`; default `all`) to selectively configure MCP clients.
-  - Added `--dry-run` flag: prints every action that would be taken without making any changes.
-  - Added `--wipe` flag: forces rebuild of SQLite graph and LanceDB index.
-  - Installation now prefers the latest GitHub release wheel (`pip install … @ <wheel_url>`) over git source, falling back to `pip install … @ git+https://…`, then `poetry add` for Poetry-managed repos.
-  - Installer banner shows active providers; summary footer lists only configured providers.
-- **`README.md`** — Quick Start section moved to after Installation; updated to describe the installer accurately as an AI integration layer for Claude Code, Kilo Code, GitHub Copilot, and Cline; added `--providers`, `--dry-run`, and `--wipe` usage examples.
-- **`docs/code_kg.tex`** / **`docs/code_kg.pdf`** — Added organization affiliation (Flux-Frontiers, Liberty Township OH; suchanek@mac.com) to author block; rebuilt PDF.
-- **`docker/Dockerfile`**, **`docker/docker-compose.yml`** — Moved from repo root into `docker/` subdirectory.
-- **`.gitignore`** — Added `codekg_lancedb/` alongside existing `lancedb/` exclusion for generated vector index artifacts.
-- **`.pre-commit-config.yaml`** — Excluded `docs/*.png|jpg|jpeg|gif|pdf` from the large-file size check.
-
-### Added
-
-- **`src/code_kg/mcp_server.py`** — MCP server exposing `graph_stats`, `query_codebase`, `pack_snippets`, and `get_node` tools for AI agent integration via the Model Context Protocol.
-- **`Dockerfile`** + **`docker-compose.yml`** — Containerized deployment for the Streamlit visualizer app with multi-stage build and volume mounts for SQLite/LanceDB artifacts.
-- **`.dockerignore`** — Docker build exclusions.
-- **`.streamlit/config.toml`** — Streamlit server configuration for containerized and local deployments.
-- **`.mcp.json`** — Project-level MCP server configuration for Claude Code, wiring `copilot-memory`, `skills-copilot`, `task-copilot`, and `codekg` servers.
-- **`CLAUDE.md`** — Project instructions for Claude Code with agent roster, session management, and project-specific rules.
-- **`.claude/commands/setup-mcp.md`** — `/setup-mcp` command: end-to-end CodeKG MCP setup and verification workflow covering build, smoke-test, and client configuration for both Claude Code and Claude Desktop.
-- **`docs/MCP.md`** — MCP server reference documentation covering tool signatures, usage examples, and client configuration.
-- **`docs/deployment.md`** — Deployment guide covering local, Docker, and Claude Desktop/Code integration.
-- **`docs/docker.md`** — Docker setup and usage guide.
-
-### Changed
-
-- **`app.py`** — Major Streamlit visualizer enhancements: interactive pyvis graph with gold-bordered seed nodes, rich tooltips, floating detail panel, tabbed UI (Graph / Query / Snippets), sidebar controls for repo/db path configuration and query parameters.
-- **`README.md`** — Updated with MCP server documentation, Docker deployment instructions, and Claude Code integration guide.
-- **`docs/Architecture.md`** — Expanded with MCP layer architecture, deployment topology, and client integration details.
-- **`.claude/agents/*.md`** — Minor trailing-newline normalization across all thirteen agent files.
-- **`pyproject.toml`** — Added MCP and Docker-related dependencies.
-
-### Removed
-
-- **`pyproject.old.toml`** — Stale backup removed.
-
-
-
-- **`graph.py`** — `CodeGraph`: OOP wrapper around `extract_repo()` providing a cached, chainable interface to pure AST extraction with no side effects.
-- **`store.py`** — `GraphStore`: SQLite persistence layer replacing the removed `codekg_sqlite.py`; exposes `write()`, `query_neighbors()`, and `provenance`-aware graph traversal via `ProvMeta`.
-- **`index.py`** — `SemanticIndex` + pluggable `Embedder` abstraction replacing `codekg_lancedb.py`; includes `SentenceTransformerEmbedder` and `SeedHit` result type for typed semantic search results.
-- **`kg.py`** — `CodeKG` top-level orchestrator owning the full pipeline (repo → `CodeGraph` → `GraphStore` → `SemanticIndex` → results); defines structured result types `BuildStats`, `QueryResult`, `Snippet`, and `SnippetPack`.
-- **`docs/Architecture.md`** — Comprehensive architecture document covering design principles, data model, build pipeline, hybrid query model, ranking, snippet packing, and call-site extraction.
-- **`.claude/agents/`** — Thirteen specialized Claude agent configurations: `cco`, `cw`, `do`, `doc`, `kc`, `me`, `qa`, `sd`, `sec`, `ta`, `uid`, `uids`, `uxd`.
-- **`.claude/commands/`** — Three custom Claude command definitions: `changelog-commit`, `continue`, `protocol`.
-- **`.vscode/extensions.json`** — Recommended VSCode extensions for the project.
-- **`tests/test_graph.py`**, **`tests/test_kg.py`**, **`tests/test_store.py`** — Full unit test suites for the three new layered classes.
-
-### Changed
-
-- **`__init__.py`** — Public API overhauled to expose `CodeGraph`, `GraphStore`, `SemanticIndex`, `CodeKG`, and all result types as top-level imports; low-level `Node`/`Edge` primitives retained under the locked v0 contract.
-- **`README.md`** — Completely rewritten with full project overview, motivation, design principles, data model reference, build pipeline description, hybrid query model, CLI usage, output artifacts table, and project structure.
-- **`build_codekg_sqlite.py`**, **`build_codekg_lancedb.py`**, **`codekg_query.py`**, **`codekg_snippet_packer.py`** — Updated to integrate with the new layered class API.
-- **`tests/test_codekg_v0.py`** — Renamed to `tests/test_primitives.py` to reflect its scope (v0 primitive contract tests).
-
-### Removed
-
-- **`codekg_sqlite.py`** — Replaced by `store.py` (`GraphStore`).
-- **`codekg_lancedb.py`** — Replaced by `index.py` (`SemanticIndex`).
-- **`docs/code_kg.synctex.gz`** — Generated LaTeX artifact removed from version control.
+Initial release. See [release notes](release-notes.md) for full details.

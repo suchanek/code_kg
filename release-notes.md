@@ -1,56 +1,65 @@
-## CodeKG v0.1.0
+## CodeKG v0.2.0
 
-> **AI Integration Layer for Python Codebase Intelligence**
+> **Major refactor: layered architecture, zero-config CLI, MCP token efficiency**
 
-CodeKG indexes Python codebases into a hybrid SQLite + LanceDB knowledge graph and exposes it to AI agents via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). This first release ships a polished installer, a full CI/CD pipeline, and distribution via GitHub Releases wheels.
+This release completes the architectural rewrite begun after v0.1.0, promotes the package to **Beta**, and ships several quality-of-life improvements for AI agents consuming the MCP tools.
 
 ---
 
 ### Highlights
 
-#### One-Command AI Integration Layer
+#### Layered Architecture
 
-`scripts/install-skill.sh` is now a full AI integration layer installer. A single command wires CodeKG into your choice of MCP clients:
+The monolithic extraction code has been split into three composable layers with a clean orchestrator on top:
+
+| Module | Class | Role |
+|--------|-------|------|
+| `graph.py` | `CodeGraph` | Pure AST extraction, no side effects |
+| `store.py` | `GraphStore` | SQLite persistence + graph traversal |
+| `index.py` | `SemanticIndex` | LanceDB semantic search + `Embedder` ABC |
+| `kg.py` | `CodeKG` | Orchestrator: build, query, pack |
+
+All result types (`BuildStats`, `QueryResult`, `Snippet`, `SnippetPack`) are importable directly from `code_kg`.
+
+#### `python -m code_kg` — Zero-Dependency Invocation
+
+A new `__main__.py` dispatcher makes every subcommand available without an activated venv or `poetry run`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh)
+python -m code_kg build-sqlite
+python -m code_kg build-lancedb
+python -m code_kg query --q "database connection"
+python -m code_kg mcp
 ```
 
-Supported providers (select with `--providers`):
+All CLI entry points now have zero-config defaults — run from a repo root and `.codekg/graph.sqlite` / `.codekg/lancedb` are used automatically.
 
-| Flag | Provider |
-|------|----------|
-| `claude` | Claude Code |
-| `kilo` | Kilo Code |
-| `copilot` | GitHub Copilot (VS Code) |
-| `cline` | Cline |
-| `all` | All of the above (default) |
+#### MCP Token Efficiency
 
-New installer flags:
+Two changes reduce context-window pressure for AI agents:
 
-- **`--providers claude,kilo`** — configure only the providers you use
-- **`--dry-run`** — print every action without making any changes
-- **`--wipe`** — force a full rebuild of the SQLite graph and LanceDB index
+- **`query_codebase`** — new `max_nodes` parameter (default **25**) caps the node list so large graphs don't flood the context.
+- **`pack_snippets`** — defaults tightened: `max_lines` **160 → 60**, `max_nodes` **50 → 15**. Snippet packs are now concise by default; pass larger values explicitly when needed.
 
-#### GitHub Releases Distribution
+#### Install Script Overhaul
 
-CodeKG is distributed as a wheel via GitHub Releases (not PyPI — the PolyForm NC license is not compatible with the PyPI terms of service). The installer automatically downloads and installs the latest release wheel, with fallback to `pip install @ git+https://…` and then `poetry add` for Poetry-managed repos.
+`scripts/install-skill.sh` no longer requires Poetry or an activated venv:
 
-#### CI/CD Pipeline
+- Detects the right Python interpreter automatically (`.venv/bin/python` → `python3` on PATH → `pip install`)
+- Writes MCP configs with the absolute Python path and `-m code_kg mcp` args
+- New flags: `--providers` (selectively configure `claude`, `kilo`, `copilot`, `cline`), `--dry-run`, `--wipe`
 
-- **CI** (`.github/workflows/ci.yml`): runs on every push and PR to `main` — ruff format/lint, mypy type-check, and pytest across Python 3.10, 3.11, and 3.12.
-- **Publish** (`.github/workflows/publish.yml`): triggered by `v*` tags — runs tests, builds wheel + sdist via `poetry build`, and creates a GitHub Release with both artifacts attached.
+#### `.codekg/` Unified Artifact Directory
 
-#### Pre-commit Hooks
+All generated artifacts now live under `.codekg/`:
 
-`.pre-commit-config.yaml` ships with the repo:
+```
+.codekg/
+├── graph.sqlite     # knowledge graph
+└── lancedb/         # vector index
+```
 
-- `ruff` lint + format on every commit
-- trailing-whitespace and end-of-file fixers
-- YAML and TOML validation
-- merge-conflict detection
-- large-file guard (1 MB, docs/ binaries excluded)
-- debug-statement detection
+Updated across all CLI tools, the MCP server, `.mcp.json`, `.vscode/mcp.json`, and all documentation.
 
 ---
 
@@ -59,8 +68,8 @@ CodeKG is distributed as a wheel via GitHub Releases (not PyPI — the PolyForm 
 | Tool | Description |
 |------|-------------|
 | `graph_stats` | Node/edge counts broken down by kind |
-| `query_codebase` | Hybrid semantic + graph traversal over the knowledge graph |
-| `pack_snippets` | Source-grounded snippet extraction with line numbers |
+| `query_codebase` | Hybrid semantic + graph traversal; supports `max_nodes` cap |
+| `pack_snippets` | Source-grounded snippet extraction with tighter defaults |
 | `get_node` | Fetch a single node by stable ID |
 
 ---
@@ -71,12 +80,10 @@ CodeKG is distributed as a wheel via GitHub Releases (not PyPI — the PolyForm 
 bash <(curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh)
 ```
 
+Or to reinstall / update an existing deployment:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh) --wipe
+```
+
 See the [README](README.md) for full usage and configuration details.
-
----
-
-### What's Next
-
-- Incremental graph updates (re-index changed files only)
-- Cross-repo linking
-- Support for additional languages beyond Python
