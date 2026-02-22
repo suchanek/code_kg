@@ -184,6 +184,28 @@ poetry install --extras mcp
 
 **Requirements:** Python ≥ 3.10, < 3.13
 
+### Using CodeKG in an existing Poetry project
+
+If your project is already managed by Poetry, add `code-kg` as a dev dependency
+pointing to the GitHub repository:
+
+```bash
+poetry add --group dev 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
+```
+
+This installs the package into your Poetry virtualenv and makes all CLI entry
+points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, etc.)
+available via `poetry run`:
+
+```bash
+poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
+poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
+poetry run codekg-mcp --repo . --db .codekg/graph.sqlite --lancedb .codekg/lancedb
+```
+
+No changes to your `pyproject.toml`'s `[tool.poetry.scripts]` section are
+required — the entry points are provided by the `code-kg` package itself.
+
 ---
 
 ## Quick Start
@@ -198,7 +220,7 @@ The installer sets up the full **AI integration layer** end-to-end:
 
 1. Installs `SKILL.md` reference files for Claude Code, Kilo Code, and other agents
 2. Installs the `/codekg` slash command for Cline
-3. Installs `codekg-mcp` if not present — prefers the latest GitHub release wheel (`pip install`), falls back to git source
+3. Installs the `code-kg` package if not already present — prefers the latest GitHub release wheel (`pip install 'code-kg[mcp] @ <wheel-url>'`), falls back to `pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'`
 4. Builds the SQLite knowledge graph (`.codekg/graph.sqlite`) and LanceDB semantic index
 5. Writes MCP configuration for each provider:
    - `.mcp.json` — Claude Code and Kilo Code
@@ -225,8 +247,7 @@ After the script completes, reload VS Code (`Cmd+Shift+P` → `Developer: Reload
 
 ## CLI Usage
 
-Once installed (`pip install code-kg`), all commands are available via the
-`python -m code_kg` dispatcher:
+Once installed, all commands are available via the `python -m code_kg` dispatcher:
 
 ```bash
 python -m code_kg --help
@@ -235,6 +256,12 @@ python -m code_kg --help
 > **Dev workflow:** if you cloned the repo and are working inside the Poetry
 > environment, prefix every command with `poetry run` instead, e.g.
 > `poetry run python -m code_kg build-sqlite`.
+
+> **Quick install (no clone):** the install script (see Quick Start above) handles
+> package installation automatically. To install manually without cloning:
+> ```bash
+> pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
+> ```
 
 ### 1. Build the SQLite knowledge graph
 
