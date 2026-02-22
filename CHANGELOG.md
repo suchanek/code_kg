@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`src/code_kg/kg.py`**, **`src/code_kg/mcp_server.py`** — `query_codebase` now accepts a `max_nodes` parameter (default 25) that caps the number of nodes returned, preventing unbounded result sets from flooding agent context windows.
+
+### Changed
+
+- **`src/code_kg/kg.py`**, **`src/code_kg/mcp_server.py`** — `pack_snippets` defaults tightened: `max_lines` reduced from 160 → 60 and `max_nodes` from 50 → 15, keeping snippet packs concise and token-efficient by default.
+
+---
+
+### Added
+
 - **`src/code_kg/__main__.py`** — New subcommand dispatcher enabling `python -m code_kg <subcommand> [args…]` invocation. Maps `build-sqlite`, `build-lancedb`, `query`, `pack`, `viz`, and `mcp` to their respective `main()` entry points; rewrites `sys.argv` so each module's argparse sees a clean argument list with the correct `prog` name in `--help` output. Allows CodeKG to be used without activating a virtual environment or relying on `poetry run`, as long as the package is installed.
 
 ### Changed

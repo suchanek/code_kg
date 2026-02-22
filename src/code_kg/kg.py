@@ -425,6 +425,7 @@ class CodeKG:
         hop: int = 1,
         rels: tuple[str, ...] = DEFAULT_RELS,
         include_symbols: bool = False,
+        max_nodes: int = 25,
     ) -> QueryResult:
         """
         Hybrid query: semantic seeding + structural expansion.
@@ -434,6 +435,7 @@ class CodeKG:
         :param hop: Graph expansion hops.
         :param rels: Edge types to expand.
         :param include_symbols: Include ``symbol`` nodes in results.
+        :param max_nodes: Maximum nodes to return (default 25).
         :return: :class:`QueryResult`.
         """
         hits = self.index.search(q, k=k)
@@ -445,6 +447,8 @@ class CodeKG:
         nodes: list[dict] = []
         kept_ids: set[str] = set()
         for nid in sorted(all_ids):
+            if len(nodes) >= max_nodes:
+                break
             n = self.store.node(nid)
             if not n:
                 continue
@@ -479,8 +483,8 @@ class CodeKG:
         rels: tuple[str, ...] = DEFAULT_RELS,
         include_symbols: bool = False,
         context: int = 5,
-        max_lines: int = 160,
-        max_nodes: int = 50,
+        max_lines: int = 60,
+        max_nodes: int = 15,
     ) -> SnippetPack:
         """
         Hybrid query + source-grounded snippet extraction.
@@ -491,8 +495,8 @@ class CodeKG:
         :param rels: Edge types to expand.
         :param include_symbols: Include ``symbol`` nodes.
         :param context: Extra context lines around each definition span.
-        :param max_lines: Maximum lines per snippet block.
-        :param max_nodes: Maximum nodes to return.
+        :param max_lines: Maximum lines per snippet block (default 60).
+        :param max_nodes: Maximum nodes to return (default 15).
         :return: :class:`SnippetPack`.
         """
         hits = self.index.search(q, k=k)
