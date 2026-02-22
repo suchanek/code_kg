@@ -5,6 +5,10 @@ description: Expert knowledge for installing, configuring, and using the CodeKG 
 
 # CodeKG Skill
 
+> **Use CodeKG first — before grep, Glob, or file reads.**
+>
+> Grep and file search find text. CodeKG understands code. It knows what calls what, what inherits from what, which modules are imported where, and surfaces the most semantically relevant source snippets in a single query. One `pack_snippets` call replaces five rounds of grep-and-read and gives the agent real structural insight into the codebase — not just line matches.
+
 CodeKG indexes Python repos into a hybrid knowledge graph (SQLite + LanceDB) and exposes it as MCP tools for AI agents.
 
 ## Installation (Poetry)
@@ -22,16 +26,64 @@ code-kg = { git = "https://github.com/suchanek/code_kg.git", extras = ["mcp"] }
 ## Build the Knowledge Graph
 
 ```bash
-# Step 1 — SQLite graph (flag: --db)
-poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
+# Step 1 — SQLite graph
+poetry run codekg-build-sqlite --repo .
 
-# Step 2 — LanceDB vector index (use --repo, like build-sqlite)
+# Step 2 — LanceDB vector index
 poetry run codekg-build-lancedb --repo .
 ```
 
-> **Common mistake:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
+> **Common mistake:** `codekg-build-lancedb` uses `--sqlite`, not `--db`, when specifying a non-default path.
 
 Add `--wipe` to either command to rebuild from scratch.
+
+## Rebuilding After Code Changes
+
+The knowledge graph is a snapshot of the codebase at build time. It does **not** update automatically. Stale data causes misleading query results — especially after renames, deletions, or large refactors.
+
+### When to rebuild
+
+| Change | Action |
+|---|---|
+| Added / renamed / deleted functions, classes, or modules | Full rebuild (`--wipe`) |
+| Large refactor touching many files | Full rebuild (`--wipe`) |
+| Minor edits within existing functions | Incremental rebuild (no `--wipe`) is usually sufficient |
+| New file added to the repo | Incremental rebuild is sufficient |
+
+> **Why `--wipe` matters:** Without it, deleted or renamed nodes remain in the index as phantom entries. LanceDB upserts by node ID so renamed nodes leave behind orphans; `--wipe` clears them.
+
+### Full rebuild (recommended after significant changes)
+
+```bash
+# Poetry
+poetry run codekg-build-sqlite  --repo . --wipe
+poetry run codekg-build-lancedb --repo . --wipe
+
+# python -m (pip-installed)
+python -m code_kg build-sqlite  --repo . --wipe
+python -m code_kg build-lancedb --repo . --wipe
+```
+
+### Incremental rebuild (minor additions only)
+
+```bash
+# Poetry — omit --wipe to upsert without clearing
+poetry run codekg-build-sqlite  --repo .
+poetry run codekg-build-lancedb --repo .
+```
+
+### Using the installer script
+
+```bash
+# Re-run the installer with --wipe from your target repo
+bash scripts/install-skill.sh --wipe
+
+# Or via curl if not running from a local clone
+curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh \
+  | bash -s -- --wipe
+```
+
+---
 
 ## Configure Claude Code / Kilo Code (.mcp.json)
 
