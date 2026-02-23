@@ -110,7 +110,7 @@ The repository is parsed using Python's `ast` module in three sequential passes 
 
 ### Phase 2 — Semantic Indexing (SQLite → LanceDB)
 
-To support semantic retrieval, a subset of nodes (`module`, `class`, `function`, `method`) is selected for vector indexing. Embedding text is constructed from names and docstrings, embedded using `jinaai/jina-embeddings-v3` (1024-dim, overridable via `CODEKG_MODEL`), and stored in **LanceDB**.
+To support semantic retrieval, a subset of nodes (`module`, `class`, `function`, `method`) is selected for vector indexing. Embedding text is constructed from names and docstrings, embedded using `all-MiniLM-L6-v2` (384-dim, overridable via `CODEKG_MODEL`), and stored in **LanceDB**.
 
 The vector index is **derived and disposable**; SQLite remains authoritative.
 
@@ -265,7 +265,7 @@ python -m code_kg build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [-
 ### 2. Build the LanceDB semantic index
 
 ```bash
-python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model jinaai/jina-embeddings-v3] [--wipe]
+python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
 ```
 
 ### 3. Run a hybrid query

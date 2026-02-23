@@ -72,9 +72,9 @@ class SentenceTransformerEmbedder(Embedder):
         """
         from sentence_transformers import SentenceTransformer
 
-        self.model = SentenceTransformer(model_name, trust_remote_code=True)
+        self.model = SentenceTransformer(model_name)
         self.model_name = model_name
-        self.dim: int = self.model.get_sentence_embedding_dimension() or 1024
+        self.dim: int = self.model.get_sentence_embedding_dimension() or 384
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of strings into float32 vectors.

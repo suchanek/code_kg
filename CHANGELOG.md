@@ -36,10 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`src/code_kg/codekg.py`** — `DEFAULT_MODEL` reverted to `all-MiniLM-L6-v2` (384-dim); `jinaai/jina-embeddings-v3` caused GPU memory exhaustion on large repositories.
+- **`src/code_kg/index.py`** — Removed `trust_remote_code=True` (not needed for MiniLM); embedding dimension fallback reverted to `384`.
+- **`src/code_kg/app.py`** — `all-MiniLM-L6-v2` restored as the first (default) option in the embedding model selector.
 - **`LICENSE`** — Switched from PolyForm Noncommercial 1.0.0 to Elastic License 2.0.
-- **`README.md`** — License badge and footer updated to Elastic 2.0; version badge updated to `0.2.2`; technical paper link added.
+- **`README.md`** — Embedding model updated to `all-MiniLM-L6-v2` in Phase 2 description and CLI example; license badge and footer updated to Elastic 2.0; version badge updated to `0.2.2`; technical paper link added.
+- **`docs/CHEATSHEET.md`** + **`.claude/skills/codekg/references/CHEATSHEET.md`** — Model in sample `graph_stats` output updated to `all-MiniLM-L6-v2`.
+- **`release-notes.md`** — Added v0.2.2 section; jina references scrubbed from v0.2.1.
 - **`.gitignore`** — Removed `*.pdf` exclusion so `docs/code_kg.pdf` is tracked.
-- **`pyproject.toml`** + **`src/code_kg/__init__.py`** — Version bumped to `0.2.2`; lancedb dependency tightened to `>=0.29.0` to match the `list_tables().tables` API introduced in that release.
+- **`pyproject.toml`** + **`src/code_kg/__init__.py`** — Version bumped to `0.2.2`; lancedb dependency tightened to `>=0.29.0`; `einops` and `transformers` removed (were only required by jina v3).
 
 ---
 

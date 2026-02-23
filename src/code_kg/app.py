@@ -763,8 +763,8 @@ def _render_sidebar() -> dict:
     model = st.sidebar.selectbox(
         "Embedding model",
         [
-            "jinaai/jina-embeddings-v3",
             "all-MiniLM-L6-v2",
+            "jinaai/jina-embeddings-v3",
             "all-mpnet-base-v2",
             "paraphrase-MiniLM-L3-v2",
         ],

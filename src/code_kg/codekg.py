@@ -30,7 +30,7 @@ from pathlib import Path
 
 #: Default sentence-transformer model.  Override via the ``CODEKG_MODEL``
 #: environment variable, e.g. ``export CODEKG_MODEL=all-MiniLM-L6-v2``.
-DEFAULT_MODEL: str = os.environ.get("CODEKG_MODEL", "jinaai/jina-embeddings-v3")
+DEFAULT_MODEL: str = os.environ.get("CODEKG_MODEL", "all-MiniLM-L6-v2")
 
 # ============================================================================
 # Graph primitives (LOCKED v0 CONTRACT)

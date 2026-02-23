@@ -1,8 +1,16 @@
+## CodeKG v0.2.2
+
+> **MiniLM embedder, lancedb >=0.29.0, license update**
+
+Reverts the default embedding model to `all-MiniLM-L6-v2` (384-dim) to avoid GPU memory exhaustion on large repositories. Tightens the lancedb dependency to `>=0.29.0` to match the stable `list_tables().tables` API. Adds a regression test for the LanceDB table-exists code path. Switches license to Elastic License 2.0.
+
+---
+
 ## CodeKG v0.2.1
 
-> **Data-flow graph edges, Jina v3 embeddings, and agent tooling**
+> **Data-flow graph edges, and agent tooling**
 
-This release adds a third AST pass that captures how data moves through your code, upgrades the default embedding model for significantly richer semantic search, and ships new agent tooling for zero-friction knowledge graph rebuilds.
+This release adds a third AST pass that captures how data moves through your code and ships new agent tooling for zero-friction knowledge graph rebuilds.
 
 ---
 
@@ -23,11 +31,9 @@ This makes queries like *"what does this function read?"* or *"which methods wri
 
 Scope tracking is exact: `_seed_params` pre-populates function scope with all parameters (positional, keyword-only, `*args`, `**kwargs`), preventing spurious `READS` edges on parameter names. Async functions (`async def`) receive full scope treatment via `visit_AsyncFunctionDef`.
 
-#### Jina v3 Embeddings
+#### Configurable Embedding Model
 
-The default embedding model upgrades from `all-MiniLM-L6-v2` (384-dim) to `jinaai/jina-embeddings-v3` (1024-dim). Semantic search results are noticeably richer, especially for nuanced queries about code behaviour.
-
-The model name is centralised in a `DEFAULT_MODEL` constant and overridable via the `CODEKG_MODEL` environment variable — no code changes needed to swap models.
+The embedding model name is centralised in a `DEFAULT_MODEL` constant and overridable via the `CODEKG_MODEL` environment variable — no code changes needed to swap models. Default is `all-MiniLM-L6-v2` (384-dim).
 
 #### `/codekg-rebuild` Slash Command
 
@@ -49,8 +55,7 @@ A copy is bundled inside the CodeKG skill at `.claude/skills/codekg/references/C
 
 - **`src/code_kg/visitor.py`** — `CodeKGVisitor` for scope-aware data-flow extraction
 - **`src/code_kg/codekg.py`** — `DEFAULT_MODEL` constant; four new `EDGE_KINDS`; `.codekg/` excluded from AST traversal; Pass 3 integration in `extract_repo()`
-- **`src/code_kg/index.py`** — `trust_remote_code=True` for Jina v3; embedding dimension fallback updated to 1024
-- **`pyproject.toml`** — `einops ^0.8.2` and `transformers >=4.44,<5.0` added as runtime dependencies (required by Jina v3)
+- **`src/code_kg/index.py`** — `DEFAULT_MODEL` constant; embedding dimension fallback 384
 - **`tests/test_visitor.py`** — 158-line test suite covering scope management, assignment tracking, and `READS`/`WRITES`/`ATTR_ACCESS` edge emission
 - **`.claude/commands/codekg-rebuild.md`** — `/codekg-rebuild` slash command
 - **`docs/CHEATSHEET.md`** — Public query cheatsheet

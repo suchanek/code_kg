@@ -323,7 +323,7 @@ get_node("fn:src/module/path.py:F")
 Nodes: 3,093   (class: 17 · function: 209 · method: 80 · module: 21 · symbol: 2,766)
 Edges: 2,534   (CALLS: 1,114 · ATTR_ACCESS: 945 · CONTAINS: 306 · IMPORTS: 165 · INHERITS: 4)
 DB:    .codekg/graph.sqlite
-Model: jinaai/jina-embeddings-v3
+Model: all-MiniLM-L6-v2
 ```
 
 *Rebuild after significant code changes: `codekg-build-sqlite --repo . --wipe && codekg-build-lancedb --repo . --wipe`*

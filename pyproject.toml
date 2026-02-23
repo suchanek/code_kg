@@ -28,8 +28,7 @@ sentence-transformers = ">=2.7.0"
 streamlit = ">=1.35.0"
 pyvis = ">=0.3.2"
 pandas = ">=2.0.0"
-einops = "^0.8.2"
-transformers = ">=4.44,<5.0"
+
 
 [tool.poetry.dependencies.mcp]
 version = ">=1.0.0"
