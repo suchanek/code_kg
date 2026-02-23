@@ -66,6 +66,10 @@ class SentenceTransformerEmbedder(Embedder):
     """
 
     def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
+        """Load the sentence-transformer model.
+
+        :param model_name: HuggingFace model name or local path.
+        """
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(model_name, trust_remote_code=True)
@@ -73,15 +77,28 @@ class SentenceTransformerEmbedder(Embedder):
         self.dim: int = self.model.get_sentence_embedding_dimension() or 1024
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Embed a list of strings into float32 vectors.
+
+        :param texts: Input strings to embed.
+        :return: List of float32 vectors, one per input string.
+        """
         vecs = self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return [np.asarray(v, dtype="float32").tolist() for v in vecs]
 
     def embed_query(self, query: str) -> list[float]:
-        """Embed a single query string."""
+        """Embed a single query string into a float32 vector.
+
+        :param query: Query string to embed.
+        :return: Float32 vector representation of the query.
+        """
         vec = self.model.encode([query], normalize_embeddings=True)[0]
         return np.asarray(vec, dtype="float32").tolist()
 
     def __repr__(self) -> str:
+        """Return a developer-readable representation of this embedder.
+
+        :return: String of the form ``SentenceTransformerEmbedder(model=..., dim=...)``.
+        """
         return f"SentenceTransformerEmbedder(model={self.model_name!r}, dim={self.dim})"
 
 
@@ -156,6 +173,13 @@ class SemanticIndex:
         table: str = _DEFAULT_TABLE,
         index_kinds: Sequence[str] = _DEFAULT_KINDS,
     ) -> None:
+        """Initialise the semantic index.
+
+        :param lancedb_dir: Directory for the LanceDB database.
+        :param embedder: Embedding backend. Defaults to :class:`SentenceTransformerEmbedder`.
+        :param table: LanceDB table name. Defaults to ``"codekg_nodes"``.
+        :param index_kinds: Node kinds to include in the index.
+        """
         self.lancedb_dir = Path(lancedb_dir)
         self.embedder: Embedder = embedder or SentenceTransformerEmbedder()
         self.table_name = table
@@ -261,11 +285,19 @@ class SemanticIndex:
     # ------------------------------------------------------------------
 
     def _read_nodes(self, store: GraphStore) -> list[dict]:  # type: ignore[name-defined]  # noqa: F821
-        """Read indexable nodes from the store."""
+        """Read indexable nodes from the store filtered by ``index_kinds``.
+
+        :param store: Authoritative :class:`~code_kg.store.GraphStore` to query.
+        :return: List of node dicts for kinds in :attr:`index_kinds`.
+        """
         return store.query_nodes(kinds=list(self.index_kinds))
 
     def _open_table(self, *, wipe: bool = False):
-        """Open or create the LanceDB table."""
+        """Open the LanceDB table, creating it with the correct schema if absent.
+
+        :param wipe: If ``True``, delete all existing rows after opening.
+        :return: LanceDB table handle.
+        """
         import lancedb
 
         self.lancedb_dir.mkdir(parents=True, exist_ok=True)
@@ -292,7 +324,10 @@ class SemanticIndex:
         return tbl
 
     def _get_table(self):
-        """Return cached table handle, opening if needed."""
+        """Return the cached LanceDB table handle, opening it if not yet loaded.
+
+        :return: LanceDB table handle.
+        """
         if self._tbl is None:
             import lancedb
 
@@ -301,6 +336,10 @@ class SemanticIndex:
         return self._tbl
 
     def __repr__(self) -> str:
+        """Return a developer-readable representation of this SemanticIndex.
+
+        :return: String including lancedb_dir, table name, and embedder details.
+        """
         return (
             f"SemanticIndex(lancedb_dir={self.lancedb_dir!r}, "
             f"table={self.table_name!r}, embedder={self.embedder!r})"
@@ -313,10 +352,13 @@ class SemanticIndex:
 
 
 def _build_index_text(n: dict) -> str:
-    """
-    Canonical text document used for embedding.
+    """Build the canonical text document used for embedding a node.
 
-    Stable — changing this invalidates the index.
+    Stable — changing this format invalidates the existing index.
+
+    :param n: Node dict with keys ``kind``, ``name``, ``qualname``, ``module_path``,
+              ``lineno``, and optionally ``docstring``.
+    :return: Newline-joined string suitable for embedding.
     """
     parts = [f"KIND: {n['kind']}", f"NAME: {n['name']}"]
     if n.get("qualname"):
@@ -331,7 +373,15 @@ def _build_index_text(n: dict) -> str:
 
 
 def _extract_distance(row: dict, fallback_rank: int) -> float:
-    """Extract a distance value from a LanceDB result row."""
+    """Extract a distance value from a LanceDB result row.
+
+    Tries ``_distance``, then ``distance``, then inverts ``score``.
+    Falls back to the row's rank if no distance field is found.
+
+    :param row: Raw result dict from LanceDB.
+    :param fallback_rank: Zero-based rank to use when no distance field is present.
+    :return: Float distance value (lower = more similar).
+    """
     for key in ("_distance", "distance"):
         if key in row and row[key] is not None:
             return float(row[key])
@@ -341,5 +391,9 @@ def _extract_distance(row: dict, fallback_rank: int) -> float:
 
 
 def _escape(s: str) -> str:
-    """Escape single quotes for LanceDB delete predicates."""
+    """Escape single quotes in a string for use in LanceDB delete predicates.
+
+    :param s: String to escape.
+    :return: String with single quotes doubled.
+    """
     return s.replace("'", "''")

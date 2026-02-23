@@ -17,6 +17,13 @@ from pathlib import Path
 
 
 def main() -> None:
+    """
+    Parse arguments and launch the CodeKG Streamlit visualizer as a subprocess.
+
+    Locates the bundled ``app.py`` in the package directory, builds the
+    ``streamlit run`` command with the requested database path and port, then
+    hands off execution to the subprocess.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description="Launch the CodeKG Streamlit visualizer.")

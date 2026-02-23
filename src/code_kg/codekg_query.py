@@ -20,6 +20,13 @@ from code_kg.store import DEFAULT_RELS
 
 
 def main() -> None:
+    """
+    Parse arguments, run a hybrid semantic + graph query, and print a summary.
+
+    Constructs a CodeKG instance from the specified SQLite and LanceDB paths,
+    issues the query, prints the ranked result summary to stdout, then closes
+    the graph.
+    """
     p = argparse.ArgumentParser(
         description="Hybrid query (semantic + graph) over a codekg database."
     )

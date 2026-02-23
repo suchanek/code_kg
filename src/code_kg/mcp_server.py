@@ -81,6 +81,12 @@ _kg: CodeKG | None = None
 
 
 def _get_kg() -> CodeKG:
+    """
+    Return the global CodeKG instance, raising if it has not been initialised.
+
+    :return: The active CodeKG instance.
+    :raises RuntimeError: If ``main()`` has not been called to initialise the graph.
+    """
     if _kg is None:
         raise RuntimeError(
             "CodeKG not initialised.  "
@@ -221,6 +227,12 @@ def graph_stats() -> str:
 
 
 def _parse_args(argv: list | None = None) -> argparse.Namespace:
+    """
+    Parse command-line arguments for the CodeKG MCP server.
+
+    :param argv: Argument list to parse; defaults to ``sys.argv[1:]`` when ``None``.
+    :return: Parsed argument namespace.
+    """
     p = argparse.ArgumentParser(
         prog="codekg-mcp",
         description="CodeKG MCP server — exposes codebase query tools to AI agents.",
@@ -260,6 +272,9 @@ def main(argv: list | None = None) -> None:
 
     Initialises the CodeKG instance and starts the MCP server using the
     requested transport (stdio for Claude Desktop, sse for HTTP clients).
+
+    :param argv: Argument list forwarded to ``_parse_args``; defaults to
+                 ``sys.argv[1:]`` when ``None``.
     """
     global _kg
 

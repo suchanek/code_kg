@@ -20,6 +20,13 @@ from code_kg.store import GraphStore
 
 
 def main() -> None:
+    """
+    Parse arguments and build a LanceDB semantic index from an existing SQLite graph.
+
+    Reads nodes of the requested kinds from the SQLite database, embeds them
+    using a SentenceTransformer model, and writes the vectors to a LanceDB
+    directory for later hybrid queries.
+    """
     p = argparse.ArgumentParser(
         description="Build a LanceDB semantic index from an existing codekg SQLite database."
     )

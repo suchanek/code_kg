@@ -384,6 +384,12 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
                 parent[c] = p
 
         def enclosing_def(n: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+            """Find the nearest enclosing function or async function definition.
+
+            :param n: AST node whose enclosing function definition is sought.
+            :return: Nearest enclosing ``FunctionDef`` or ``AsyncFunctionDef``,
+                     or ``None`` if not inside any function.
+            """
             cur = parent.get(n)
             while cur:
                 if isinstance(cur, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -392,6 +398,11 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
             return None
 
         def owner_id(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+            """Compute the graph node ID for the owner of a function definition.
+
+            :param fn: Function or async function definition node.
+            :return: Graph node ID string if the function is tracked, otherwise ``None``.
+            """
             p = parent.get(fn)
             if isinstance(p, ast.ClassDef):
                 return module_locals[module].get(f"{p.name}.{fn.name}")

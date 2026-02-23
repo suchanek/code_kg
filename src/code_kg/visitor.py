@@ -13,6 +13,13 @@ REL_DEPENDS_ON = "DEPENDS_ON"  # placeholder for future control-flow
 
 class CodeKGVisitor(ast.NodeVisitor):
     def __init__(self, module_id: str, file_path: str):
+        """Initialise the visitor for a single Python source file.
+
+        :param module_id: Dot-separated module identifier for the file being
+            visited (e.g. ``code_kg.visitor``).
+        :param file_path: Absolute path to the source file, stored as evidence
+            on every edge emitted by this visitor.
+        """
         self.module_id = module_id
         self.file_path = file_path
         self.current_scope: list[str] = []  # qualnames stack
@@ -29,7 +36,16 @@ class CodeKGVisitor(ast.NodeVisitor):
         return name
 
     def _get_node_id(self, qualname: str) -> str:
-        """Build a stable node id using the project's ``kind:module:qualname`` convention."""
+        """Build a stable node id using the project's ``kind:module:qualname`` convention.
+
+        Looks up the kind for *qualname* in the internal scope-kinds registry,
+        defaulting to ``"symbol"`` when unknown. The resulting node is
+        registered in ``self.nodes`` if not already present.
+
+        :param qualname: Fully-qualified name of the symbol
+            (e.g. ``mymodule.MyClass.my_method``).
+        :return: Stable node identifier string suitable for use as a graph key.
+        """
         kind = self._scope_kinds.get(qualname, "symbol")
         prefix = self.module_id + "."
         if kind == "module" or qualname == self.module_id:
@@ -42,11 +58,26 @@ class CodeKGVisitor(ast.NodeVisitor):
         return nid
 
     def _add_edge(self, src_id: str, tgt_id: str, rel: str, evidence: ast.AST | None = None):
+        """Record a directed edge between two graph nodes.
+
+        :param src_id: Node identifier for the source of the edge.
+        :param tgt_id: Node identifier for the target of the edge.
+        :param rel: Relation type label (e.g. ``CALLS``, ``CONTAINS``).
+        :param evidence: Optional AST node from which the line number is
+            extracted and stored alongside the edge.
+        """
         ev = {"lineno": getattr(evidence, "lineno", None), "file": self.file_path}
         self.edges.append((src_id, tgt_id, rel, ev))
 
     def _extract_reads(self, expr: ast.AST) -> set[str]:
-        """Collect variable names that are loaded (READS)"""
+        """Collect variable names that are loaded (READS).
+
+        Walks *expr* and returns the identifier of every ``ast.Name`` node
+        whose context is ``Load`` or ``Del`` (deletion can be read-like).
+
+        :param expr: Root AST node to walk.
+        :return: Set of variable name strings that are read within *expr*.
+        """
         reads = set()
         for sub in ast.walk(expr):
             if isinstance(sub, ast.Name) and isinstance(
@@ -58,6 +89,20 @@ class CodeKGVisitor(ast.NodeVisitor):
     def _add_var_edge(
         self, var_name: str, rel: str, target: str | None = None, evidence: ast.AST | None = None
     ):
+        """Emit an edge involving a variable node in the current scope.
+
+        Creates a per-scope variable node for *var_name* and, when *target* is
+        provided, emits a directed edge from that variable node to a node for
+        *target* within the same scope.
+
+        :param var_name: Name of the variable that is the source of the edge.
+        :param rel: Relation type label (e.g. ``READS``, ``WRITES``,
+            ``ATTR_ACCESS``).
+        :param target: Name of the symbol that is the target of the edge.
+            When ``None`` no edge is emitted (variable node is still created).
+        :param evidence: Optional AST node used to record the source line
+            number on the edge.
+        """
         scope = self.current_scope[-1] if self.current_scope else None
         if not scope:
             return
@@ -72,6 +117,14 @@ class CodeKGVisitor(ast.NodeVisitor):
     # ────────────────────────────────────────────────
 
     def visit_Module(self, node: ast.Module):
+        """Visit the top-level module node and initialise module scope state.
+
+        Pushes the module's identifier onto the scope stack, registers its
+        kind as ``"module"``, initialises its variable-in-scope set, then
+        recurses into all child nodes before popping the scope.
+
+        :param node: The ``ast.Module`` node for the file being visited.
+        """
         self.current_scope = [self.module_id]
         self._scope_kinds[self.module_id] = "module"
         self.vars_in_scope[self.module_id] = set()
@@ -79,6 +132,14 @@ class CodeKGVisitor(ast.NodeVisitor):
         self.current_scope.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef):
+        """Visit a class definition and emit a CONTAINS edge from its parent.
+
+        Registers the class as kind ``"class"``, pushes its qualified name onto
+        the scope stack, records a ``CONTAINS`` relationship from the enclosing
+        scope, then recurses into the class body before restoring the scope.
+
+        :param node: The ``ast.ClassDef`` node being visited.
+        """
         qualname = self._qualname(node.name)
         self._scope_kinds[qualname] = "class"
         self.current_scope.append(qualname)
@@ -105,6 +166,16 @@ class CodeKGVisitor(ast.NodeVisitor):
             self.vars_in_scope[qualname].add(param.arg)
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
+        """Visit a synchronous function or method definition.
+
+        Determines whether the callable is a ``"function"`` or ``"method"``
+        based on the enclosing scope kind, processes default argument
+        expressions in the enclosing scope, then pushes a new scope for the
+        function body. Emits a ``CONTAINS`` edge from the parent scope and
+        seeds parameter names into the local variable set before recursing.
+
+        :param node: The ``ast.FunctionDef`` node being visited.
+        """
         qualname = self._qualname(node.name)
         parent_kind = self._scope_kinds.get(
             self.current_scope[-1] if self.current_scope else "", "module"
@@ -136,6 +207,16 @@ class CodeKGVisitor(ast.NodeVisitor):
         self.current_func = None
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        """Visit an asynchronous function or method definition.
+
+        Behaves identically to :meth:`visit_FunctionDef` but handles
+        ``async def`` nodes. Determines kind (``"function"`` or
+        ``"method"``), processes default argument expressions in the
+        enclosing scope, pushes the function scope, emits a ``CONTAINS``
+        edge, seeds parameters, and recurses into the body.
+
+        :param node: The ``ast.AsyncFunctionDef`` node being visited.
+        """
         qualname = self._qualname(node.name)
         parent_kind = self._scope_kinds.get(
             self.current_scope[-1] if self.current_scope else "", "module"
@@ -167,6 +248,15 @@ class CodeKGVisitor(ast.NodeVisitor):
         self.current_func = None
 
     def visit_Assign(self, node: ast.Assign):
+        """Visit a simple assignment statement and record READS/WRITES edges.
+
+        For each ``ast.Name`` target, registers the variable in the current
+        scope's variable set, emits ``READS`` edges for every variable name
+        loaded from the right-hand side, and emits a ``WRITES`` edge for the
+        target variable.
+
+        :param node: The ``ast.Assign`` node being visited.
+        """
         for target in node.targets:
             if isinstance(target, ast.Name):
                 var = target.id
@@ -185,6 +275,14 @@ class CodeKGVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute):
+        """Visit an attribute access and emit an ATTR_ACCESS edge.
+
+        When the object being accessed is a simple name (``ast.Name``), emits
+        an ``ATTR_ACCESS`` edge from the object's variable node to a node
+        representing the accessed attribute within the current scope.
+
+        :param node: The ``ast.Attribute`` node being visited.
+        """
         if isinstance(node.value, ast.Name):
             obj = node.value.id
             attr = node.attr
@@ -192,6 +290,14 @@ class CodeKGVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call):
+        """Visit a call expression and emit READS edges for all arguments.
+
+        Records ``READS`` edges for every variable loaded from positional
+        arguments and keyword argument values so that data-flow through call
+        sites is captured in the graph.
+
+        :param node: The ``ast.Call`` node being visited.
+        """
         # Assume you already have CALLS logic; add READS from args/kwargs
         for arg in node.args:
             reads = self._extract_reads(arg)
@@ -209,5 +315,10 @@ class CodeKGVisitor(ast.NodeVisitor):
     # Add more visitors as needed (e.g. visit_If for DEPENDS_ON stubs)
 
     def finalize(self):
-        """Return collected nodes & edges for DB insertion"""
+        """Return collected nodes and edges for database insertion.
+
+        :return: A two-tuple ``(nodes, edges)`` where *nodes* is a dict
+            mapping node id strings to their property dicts and *edges* is a
+            list of ``(src_id, tgt_id, rel, evidence)`` tuples.
+        """
         return self.nodes, self.edges

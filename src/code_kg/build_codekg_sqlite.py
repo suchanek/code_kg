@@ -19,6 +19,12 @@ from code_kg.store import GraphStore
 
 
 def main() -> None:
+    """
+    Parse arguments, extract the code knowledge graph, and persist it to SQLite.
+
+    Walks the repository at ``--repo``, builds a CodeGraph via AST analysis,
+    then writes all nodes and edges to the SQLite database at ``--db``.
+    """
     p = argparse.ArgumentParser(
         description="Extract a code knowledge graph from a Python repo and store it in SQLite."
     )

@@ -20,6 +20,13 @@ from code_kg.store import DEFAULT_RELS
 
 
 def main() -> None:
+    """
+    Parse arguments, run a hybrid query, pack ranked snippets, and output results.
+
+    Builds a CodeKG instance, issues a hybrid semantic + graph query, assembles
+    a source-grounded snippet pack, then writes it to stdout or to a file
+    depending on the ``--out`` argument.
+    """
     p = argparse.ArgumentParser(
         description="Hybrid query + snippet packing over a codekg database."
     )

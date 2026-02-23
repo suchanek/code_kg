@@ -35,6 +35,10 @@ class CodeGraph:
     """
 
     def __init__(self, repo_root: str | Path) -> None:
+        """Initialise the graph for a given repository root.
+
+        :param repo_root: Path to the repository root directory.
+        """
         self.repo_root: Path = Path(repo_root).resolve()
         self._nodes: list[Node] | None = None
         self._edges: list[Edge] | None = None
@@ -69,7 +73,10 @@ class CodeGraph:
         return self._edges  # type: ignore[return-value]
 
     def result(self) -> tuple[list[Node], list[Edge]]:
-        """Return ``(nodes, edges)`` tuple."""
+        """Return the extracted nodes and edges as a tuple.
+
+        :return: ``(nodes, edges)`` tuple, triggering extraction if not yet done.
+        """
         return self.nodes, self.edges
 
     def stats(self) -> dict:
@@ -92,6 +99,10 @@ class CodeGraph:
         }
 
     def __repr__(self) -> str:
+        """Return a developer-readable representation of this CodeGraph.
+
+        :return: String including repo root, and node/edge counts if already extracted.
+        """
         extracted = self._nodes is not None
         if extracted:
             return (

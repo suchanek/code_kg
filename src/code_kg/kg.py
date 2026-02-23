@@ -61,6 +61,11 @@ class BuildStats:
     index_dim: int | None = None
 
     def to_dict(self) -> dict:
+        """
+        Serialise the stats to a plain dictionary.
+
+        :return: Dictionary containing all ``BuildStats`` fields.
+        """
         return {
             "repo_root": self.repo_root,
             "db_path": self.db_path,
@@ -73,6 +78,12 @@ class BuildStats:
         }
 
     def __str__(self) -> str:
+        """
+        Render a human-readable multi-line summary of the build statistics.
+
+        :return: Formatted string with repo root, db path, node/edge counts,
+                 and (if available) indexed vector count and dimension.
+        """
         lines = [
             f"repo_root   : {self.repo_root}",
             f"db_path     : {self.db_path}",
@@ -109,6 +120,11 @@ class QueryResult:
     edges: list[dict]
 
     def to_dict(self) -> dict:
+        """
+        Serialise the query result to a plain dictionary.
+
+        :return: Dictionary containing all ``QueryResult`` fields.
+        """
         return {
             "query": self.query,
             "seeds": self.seeds,
@@ -125,7 +141,13 @@ class QueryResult:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     def print_summary(self) -> None:
-        """Print a human-readable summary to stdout."""
+        """
+        Print a human-readable summary of the query result to stdout.
+
+        Displays the query string, seed/expansion/return counts, hop depth,
+        active edge relations, each returned node with its first docstring
+        line, and all intra-set edges.
+        """
         sep = "=" * 80
         print(sep)
         print(f"QUERY: {self.query}")
@@ -169,6 +191,11 @@ class Snippet:
     text: str
 
     def to_dict(self) -> dict:
+        """
+        Serialise the snippet to a plain dictionary.
+
+        :return: Dictionary with ``path``, ``start``, ``end``, and ``text`` keys.
+        """
         return {"path": self.path, "start": self.start, "end": self.end, "text": self.text}
 
 
@@ -199,6 +226,11 @@ class SnippetPack:
     edges: list[dict]
 
     def to_dict(self) -> dict:
+        """
+        Serialise the snippet pack to a plain dictionary.
+
+        :return: Dictionary containing all ``SnippetPack`` fields.
+        """
         return {
             "query": self.query,
             "seeds": self.seeds,
@@ -216,7 +248,16 @@ class SnippetPack:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     def to_markdown(self) -> str:
-        """Render as a Markdown context pack."""
+        """
+        Render the snippet pack as a Markdown context document.
+
+        The output includes a header with query metadata, a section for each
+        returned node (with kind, qualname, module path, line number, first
+        docstring line, and an annotated source block when a snippet is
+        attached), and a final section listing all intra-set edges.
+
+        :return: Markdown-formatted string representing the full context pack.
+        """
         out: list[str] = []
         out.append("# CodeKG Snippet Pack\n")
         out.append(f"**Query:** `{self.query}`  ")
@@ -310,6 +351,15 @@ class CodeKG:
         model: str = DEFAULT_MODEL,
         table: str = "codekg_nodes",
     ) -> None:
+        """
+        Initialise ``CodeKG`` and resolve all paths.
+
+        :param repo_root: Repository root directory; resolved to an absolute path.
+        :param db_path: Path to the SQLite database file.
+        :param lancedb_dir: Directory used by LanceDB for the vector index.
+        :param model: Sentence-transformer model name used for embedding.
+        :param table: LanceDB table name for the node index.
+        """
         self.repo_root = Path(repo_root).resolve()
         self.db_path = Path(db_path)
         self.lancedb_dir = Path(lancedb_dir)
@@ -617,12 +667,29 @@ class CodeKG:
             self._store.close()
 
     def __enter__(self) -> CodeKG:
+        """
+        Enter the runtime context, returning the ``CodeKG`` instance itself.
+
+        :return: This ``CodeKG`` instance.
+        """
         return self
 
     def __exit__(self, *_: object) -> None:
+        """
+        Exit the runtime context and close the underlying SQLite connection.
+
+        Accepts and ignores any exception info so the context manager does
+        not suppress exceptions raised inside the ``with`` block.
+        """
         self.close()
 
     def __repr__(self) -> str:
+        """
+        Return an unambiguous string representation of the ``CodeKG`` instance.
+
+        :return: String of the form
+                 ``CodeKG(repo_root=..., db_path=..., lancedb_dir=..., model=...)``.
+        """
         return (
             f"CodeKG(repo_root={self.repo_root!r}, "
             f"db_path={self.db_path!r}, "
@@ -637,6 +704,16 @@ class CodeKG:
 
 
 def _safe_join(repo_root: Path, rel_path: str) -> Path:
+    """
+    Safely join a repo-relative path to the repository root.
+
+    Raises ``ValueError`` if the resolved path would escape the repository
+    root (path traversal guard).
+
+    :param repo_root: Absolute path to the repository root directory.
+    :param rel_path: Repository-relative path to join.
+    :return: Resolved absolute ``Path`` within ``repo_root``.
+    """
     p = (repo_root / rel_path).resolve()
     rr = repo_root.resolve()
     if rr not in p.parents and p != rr:
@@ -645,6 +722,15 @@ def _safe_join(repo_root: Path, rel_path: str) -> Path:
 
 
 def _read_lines(path: Path) -> list[str]:
+    """
+    Read all lines from a file, returning an empty list if the file is missing.
+
+    Falls back to ``errors="ignore"`` when a ``UnicodeDecodeError`` is
+    encountered so that binary or mis-encoded files are handled gracefully.
+
+    :param path: Absolute path to the file to read.
+    :return: List of lines (without trailing newlines) or ``[]`` on error.
+    """
     try:
         return path.read_text(encoding="utf-8").splitlines()
     except UnicodeDecodeError:
@@ -662,6 +748,22 @@ def _compute_span(
     max_lines: int,
     file_nlines: int,
 ) -> tuple[int, int]:
+    """
+    Compute the 1-based (start, end) line span for a node's source snippet.
+
+    For ``module`` nodes or nodes without a ``lineno``, the span covers the
+    first ``max_lines`` lines of the file.  For all other nodes the span is
+    the definition range expanded by ``context`` lines on each side, capped
+    at ``max_lines``.
+
+    :param kind: Node kind (e.g. ``"module"``, ``"function"``, ``"class"``).
+    :param lineno: 1-based start line of the definition, or ``None``.
+    :param end_lineno: 1-based end line of the definition, or ``None``.
+    :param context: Number of extra lines to include before and after the span.
+    :param max_lines: Maximum number of lines the span may contain.
+    :param file_nlines: Total number of lines in the source file.
+    :return: ``(start, end)`` tuple of 1-based line numbers.
+    """
     if file_nlines <= 0:
         return (1, 0)
     if kind == "module":
@@ -682,6 +784,18 @@ def _compute_span(
 
 
 def _make_snippet(rel_path: str, lines: list[str], start: int, end: int) -> dict:
+    """
+    Build a snippet dictionary from a slice of source lines.
+
+    Each line in the output is prefixed with its 1-based line number so that
+    consumers can display annotated source.
+
+    :param rel_path: Repository-relative file path (stored as ``path`` in the result).
+    :param lines: Full list of source lines for the file (0-indexed).
+    :param start: 1-based first line of the snippet (inclusive).
+    :param end: 1-based last line of the snippet (inclusive).
+    :return: Dictionary with ``path``, ``start``, ``end``, and ``text`` keys.
+    """
     s0 = max(0, start - 1)
     e0 = max(0, end)
     chunk = lines[s0:e0]
@@ -690,6 +804,19 @@ def _make_snippet(rel_path: str, lines: list[str], start: int, end: int) -> dict
 
 
 def _spans_overlap(a: tuple[int, int], b: tuple[int, int], gap: int = 2) -> bool:
+    """
+    Return ``True`` when two line spans are considered overlapping.
+
+    Two spans overlap when they are closer than ``gap`` lines apart, which
+    prevents near-duplicate source blocks from appearing in a snippet pack.
+
+    :param a: First span as a ``(start, end)`` tuple of 1-based line numbers.
+    :param b: Second span as a ``(start, end)`` tuple of 1-based line numbers.
+    :param gap: Minimum number of lines that must separate two non-overlapping
+                spans (default 2).
+    :return: ``True`` if the spans overlap or are within ``gap`` lines of each
+             other, ``False`` otherwise.
+    """
     a0, a1 = a
     b0, b1 = b
     return not (a1 + gap < b0 or b1 + gap < a0)

@@ -100,6 +100,12 @@ st.markdown(
 
 
 def _init_state() -> None:
+    """
+    Initialize Streamlit session state with default values.
+
+    Sets keys for database path, store, query/pack results, graph data,
+    CodeKG instance, and selected node if they are not already present.
+    """
     defaults = {
         "db_path": _DEFAULT_DB,
         "store": None,
@@ -124,6 +130,14 @@ def _init_state() -> None:
 
 @st.cache_resource(show_spinner="Opening SQLite store…")
 def _load_store(db_path: str) -> GraphStore | None:
+    """
+    Load and cache a GraphStore from the given SQLite database path.
+
+    Returns ``None`` if the file does not exist.
+
+    :param db_path: Filesystem path to the SQLite database file.
+    :return: A connected ``GraphStore`` instance, or ``None`` if the file is absent.
+    """
     p = Path(db_path)
     if not p.exists():
         return None
@@ -131,6 +145,14 @@ def _load_store(db_path: str) -> GraphStore | None:
 
 
 def _get_store() -> GraphStore | None:
+    """
+    Retrieve the current GraphStore, loading it if the database path has changed.
+
+    Compares the cached loaded path against ``st.session_state.db_path`` and
+    calls ``_load_store`` only when the path differs.
+
+    :return: The active ``GraphStore`` instance, or ``None`` if no database is available.
+    """
     db = st.session_state.db_path
     if st.session_state.store_loaded_path != db:
         st.session_state.store = _load_store(db)
@@ -145,6 +167,17 @@ def _get_store() -> GraphStore | None:
 
 @st.cache_resource(show_spinner="Loading CodeKG (embedder may take a moment)…")
 def _load_kg(repo_root: str, db_path: str, lancedb_dir: str, model: str):
+    """
+    Load and cache a ``CodeKG`` instance for the given configuration.
+
+    Keyed on all four parameters so that changing any one triggers a fresh load.
+
+    :param repo_root: Root directory of the Python repository to analyse.
+    :param db_path: Path to the SQLite graph database.
+    :param lancedb_dir: Directory for the LanceDB vector index.
+    :param model: Name of the sentence-transformer embedding model to use.
+    :return: An initialised ``CodeKG`` instance.
+    """
     from code_kg import CodeKG  # local import to avoid top-level cost
 
     return CodeKG(
@@ -166,6 +199,12 @@ def _build_node_tooltip(n: dict, color: str) -> str:
 
     Shows: kind badge · qualname · module path · line range · full docstring.
     Rendered inside the pyvis hover popup (supports basic HTML).
+
+    :param n: Node attribute dictionary containing keys such as ``kind``,
+        ``qualname``, ``module_path``, ``lineno``, ``end_lineno``, and
+        ``docstring``.
+    :param color: Hex colour string used for the kind badge and left border.
+    :return: An HTML string suitable for use as a pyvis node ``title``.
     """
     kind = n.get("kind", "symbol")
     qualname = n.get("qualname") or n.get("name", "")
@@ -233,6 +272,16 @@ def _build_pyvis(
     Seed nodes (from semantic search) are rendered with a gold border.
     Hovering shows a rich tooltip; clicking a node opens a floating detail
     panel inside the graph iframe with the full docstring and metadata.
+
+    :param nodes: List of node attribute dicts, each containing at minimum
+        an ``id`` key plus optional ``kind``, ``name``, ``qualname``,
+        ``module_path``, ``lineno``, ``end_lineno``, and ``docstring``.
+    :param edges: List of edge dicts with ``src``, ``dst``, and ``rel`` keys.
+    :param height: CSS height string for the iframe (e.g. ``"620px"``).
+    :param seed_ids: Set of node IDs that originated from the semantic seed
+        query; these are highlighted with a gold border.
+    :param physics: Whether to enable the Barnes-Hut physics simulation.
+    :return: A self-contained HTML string that renders the interactive graph.
     """
     net = Network(
         height=height,
@@ -488,6 +537,12 @@ def _render_node_detail(node: dict, store: GraphStore | None = None) -> None:
 
     Shows: kind badge, qualname, module + line range, full docstring,
     and (if store is provided) the node's immediate edges.
+
+    :param node: Node attribute dictionary containing at minimum an ``id``
+        key plus optional ``kind``, ``qualname``, ``name``, ``module_path``,
+        ``lineno``, ``end_lineno``, and ``docstring``.
+    :param store: An optional ``GraphStore`` used to look up adjacent edges.
+        When ``None``, the edges section is omitted.
     """
     kind = node.get("kind", "symbol")
     color = _KIND_COLOR.get(kind, "#95A5A6")
@@ -577,6 +632,13 @@ def _node_detail_section(
     detail card.  This is the Streamlit-native complement to the pyvis
     hover tooltip — it persists on screen and shows the complete docstring
     plus edge table.
+
+    :param nodes: List of node attribute dicts to populate the selectbox.
+    :param store: An optional ``GraphStore`` passed through to
+        ``_render_node_detail`` for edge lookups.
+    :param key_prefix: String prefix for Streamlit widget keys, used to
+        avoid key collisions when multiple instances are rendered on the
+        same page.
     """
     if not nodes:
         return
@@ -614,6 +676,12 @@ def _node_detail_section(
 
 
 def _render_legend() -> None:
+    """
+    Render the graph legend showing node-kind colours and edge-relation colours.
+
+    Displays colour swatches for each entry in ``_KIND_COLOR`` and
+    ``_REL_COLOR`` as inline Streamlit markdown columns.
+    """
     st.markdown("**Node kinds**")
     cols = st.columns(len(_KIND_COLOR))
     for col, (kind, color) in zip(cols, _KIND_COLOR.items()):
@@ -640,7 +708,18 @@ def _render_legend() -> None:
 
 
 def _render_sidebar() -> dict:
-    """Render sidebar controls and return a config dict."""
+    """
+    Render the sidebar controls and return a configuration dictionary.
+
+    Exposes controls for the SQLite path, repo root, LanceDB directory,
+    embedding model, query parameters (k, hops, relations, include_symbols),
+    graph display options (max nodes, physics, height), and build buttons
+    for the graph and semantic index.
+
+    :return: A dict with keys ``db_path``, ``repo_root``, ``lancedb_dir``,
+        ``model``, ``k``, ``hop``, ``rels``, ``include_symbols``,
+        ``max_graph_nodes``, ``physics_on``, ``graph_height``, and ``store``.
+    """
     st.sidebar.title("🕸️ CodeKG Explorer")
     st.sidebar.markdown("---")
 
@@ -808,6 +887,17 @@ def _render_sidebar() -> dict:
 
 
 def _tab_graph(cfg: dict) -> None:
+    """
+    Render the Graph Browser tab.
+
+    Loads nodes and edges from the store according to the sidebar filters,
+    displays the interactive pyvis graph, a node table expander, and the
+    node-detail section.
+
+    :param cfg: Configuration dictionary returned by ``_render_sidebar``,
+        providing keys such as ``store``, ``max_graph_nodes``,
+        ``graph_height``, and ``physics_on``.
+    """
     st.header("🗺️ Knowledge Graph Browser")
     store: GraphStore | None = cfg["store"]
     if store is None:
@@ -894,6 +984,18 @@ def _tab_graph(cfg: dict) -> None:
 
 
 def _tab_query(cfg: dict) -> None:
+    """
+    Render the Hybrid Query tab.
+
+    Accepts a natural-language query, runs it through the CodeKG hybrid
+    semantic+structural search, and displays the results as a graph,
+    node table, edge table, and raw JSON (with a download button).
+
+    :param cfg: Configuration dictionary returned by ``_render_sidebar``,
+        providing keys such as ``store``, ``repo_root``, ``db_path``,
+        ``lancedb_dir``, ``model``, ``k``, ``hop``, ``rels``,
+        ``include_symbols``, ``graph_height``, and ``physics_on``.
+    """
     st.header("🔍 Hybrid Query")
     store: GraphStore | None = cfg["store"]
     if store is None:
@@ -1015,6 +1117,18 @@ def _tab_query(cfg: dict) -> None:
 
 
 def _tab_snippets(cfg: dict) -> None:
+    """
+    Render the Snippet Pack tab.
+
+    Accepts a query, builds a source-grounded snippet pack via CodeKG,
+    and displays metrics, download buttons, a pack graph, per-node
+    expandable code snippets, and an edges table.
+
+    :param cfg: Configuration dictionary returned by ``_render_sidebar``,
+        providing keys such as ``store``, ``repo_root``, ``db_path``,
+        ``lancedb_dir``, ``model``, ``k``, ``hop``, ``rels``,
+        ``include_symbols``, and ``physics_on``.
+    """
     st.header("📦 Snippet Pack")
     store: GraphStore | None = cfg["store"]
     if store is None:
@@ -1159,6 +1273,12 @@ def _tab_snippets(cfg: dict) -> None:
 
 
 def main() -> None:
+    """
+    Application entry point for the CodeKG Streamlit visualizer.
+
+    Initialises session state, renders the sidebar, and dispatches to the
+    three tab renderers: Graph Browser, Hybrid Query, and Snippet Pack.
+    """
     _init_state()
     cfg = _render_sidebar()
 

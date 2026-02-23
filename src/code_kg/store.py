@@ -79,6 +79,10 @@ class ProvMeta:
         self.via_seed = via_seed
 
     def __repr__(self) -> str:
+        """Return a developer-readable representation of this ProvMeta.
+
+        :return: String of the form ``ProvMeta(best_hop=..., via_seed=...)``.
+        """
         return f"ProvMeta(best_hop={self.best_hop}, via_seed={self.via_seed!r})"
 
 
@@ -110,6 +114,10 @@ class GraphStore:
     """
 
     def __init__(self, db_path: str | Path) -> None:
+        """Initialise the store against a SQLite database file.
+
+        :param db_path: Path to the SQLite database file (created if absent).
+        """
         self.db_path = Path(db_path)
         self._con: sqlite3.Connection | None = None
 
@@ -136,9 +144,14 @@ class GraphStore:
             self._con = None
 
     def __enter__(self) -> GraphStore:
+        """Enter the context manager.
+
+        :return: This :class:`GraphStore` instance.
+        """
         return self
 
     def __exit__(self, *_: object) -> None:
+        """Exit the context manager, closing the SQLite connection."""
         self.close()
 
     # ------------------------------------------------------------------
@@ -171,6 +184,10 @@ class GraphStore:
         self._upsert_edges(edges)
 
     def _upsert_nodes(self, nodes: Iterable[Node]) -> None:
+        """Insert or update a batch of nodes in the ``nodes`` table.
+
+        :param nodes: Iterable of :class:`~code_kg.codekg.Node` objects to persist.
+        """
         rows = [
             (
                 n.id,
@@ -203,6 +220,10 @@ class GraphStore:
         self.con.commit()
 
     def _upsert_edges(self, edges: Iterable[Edge]) -> None:
+        """Insert or update a batch of edges in the ``edges`` table.
+
+        :param edges: Iterable of :class:`~code_kg.codekg.Edge` objects to persist.
+        """
         rows = [
             (
                 e.src,
@@ -389,6 +410,10 @@ class GraphStore:
         }
 
     def __repr__(self) -> str:
+        """Return a developer-readable representation of this GraphStore.
+
+        :return: String of the form ``GraphStore(db_path=...)``.
+        """
         return f"GraphStore(db_path={self.db_path!r})"
 
 
@@ -398,6 +423,11 @@ class GraphStore:
 
 
 def _row_to_node(row: tuple) -> dict:
+    """Convert a raw SQLite row into a node dict.
+
+    :param row: Tuple of ``(id, kind, name, qualname, module_path, lineno, end_lineno, docstring)``.
+    :return: Dict with the same keys suitable for JSON serialisation.
+    """
     return {
         "id": row[0],
         "kind": row[1],

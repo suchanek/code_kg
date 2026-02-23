@@ -41,6 +41,14 @@ Run  python -m code_kg <subcommand> --help  for per-command options.
 
 
 def main() -> None:
+    """
+    Dispatch ``python -m code_kg <subcommand>`` to the appropriate CLI module.
+
+    Rewrites ``sys.argv`` so the target module's argparse sees a clean argument
+    list, then imports and calls that module's ``main()`` function.
+    Prints usage and exits with a non-zero status for unknown or missing
+    subcommands.
+    """
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(_HELP, end="")
         sys.exit(0)
