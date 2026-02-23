@@ -13,6 +13,7 @@
 with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Author: Eric G. Suchanek, PhD*
+*Flux-Frontiers, Liberty TWP, OH*
 
 ---
 
@@ -55,13 +56,13 @@ Text search and IDE symbol lookup are brittle. LLMs provide semantic intuition b
 
 Nodes represent concrete program elements extracted from the source tree:
 
-| Kind       | Description                         |
-|------------|-------------------------------------|
-| `module`   | Python source file                  |
-| `class`    | Class definition                    |
-| `function` | Top-level function                  |
-| `method`   | Class method                        |
-| `symbol`   | Names, attributes, call expressions |
+| Kind       | Description                                                    |
+|------------|----------------------------------------------------------------|
+| `module`   | Python source file                                             |
+| `class`    | Class definition                                               |
+| `function` | Top-level function                                             |
+| `method`   | Class method                                                   |
+| `symbol`   | Variables, parameters, and attributes extracted by the data-flow pass |
 
 Each node stores a stable deterministic `id`, `kind`, `name`, `qualname`, `module_path`, `lineno`, `end_lineno`, and optional `docstring`. Nodes live in **SQLite**, which is canonical.
 
@@ -69,12 +70,15 @@ Each node stores a stable deterministic `id`, `kind`, `name`, `qualname`, `modul
 
 Edges encode semantic relationships between nodes:
 
-| Relation   | Meaning                           |
-|------------|-----------------------------------|
-| `CONTAINS` | Module → class/function           |
-| `CALLS`    | Function/method → function/method |
-| `IMPORTS`  | Module → module/symbol            |
-| `INHERITS` | Class → base class                |
+| Relation      | Meaning                                                   |
+|---------------|-----------------------------------------------------------|
+| `CONTAINS`    | Module → class/function                                   |
+| `CALLS`       | Function/method → function/method                         |
+| `IMPORTS`     | Module → module/symbol                                    |
+| `INHERITS`    | Class → base class                                        |
+| `ATTR_ACCESS` | Variable/symbol → accessed attribute (`obj.attr`)         |
+| `READS`       | Variable read at an assignment right-hand side or call site |
+| `WRITES`      | Variable written at an assignment target                  |
 
 Edges may carry **evidence** (e.g., source line number and expression text), enabling call-site extraction and precise auditability:
 
@@ -91,7 +95,11 @@ Edges may carry **evidence** (e.g., source line number and expression text), ena
 
 ### Phase 1 — Static Analysis (AST → SQLite)
 
-The repository is parsed using Python's `ast` module. All `.py` files are traversed and definitions, calls, imports, and inheritance relationships are extracted. Normalized node IDs are generated and explicit edges are emitted with associated evidence.
+The repository is parsed using Python's `ast` module in three sequential passes over each file:
+
+1. **Pass 1 — Structural extraction** — modules, classes, functions, and methods are identified and `CONTAINS`/`IMPORTS`/`INHERITS` edges are emitted.
+2. **Pass 2 — Call graph** — call expressions are resolved to their targets and `CALLS` edges with source-line evidence are recorded.
+3. **Pass 3 — Data-flow** — `CodeKGVisitor` walks each AST to emit `READS`, `WRITES`, and `ATTR_ACCESS` edges at the variable and attribute level. New `symbol` nodes are merged non-destructively alongside the structural nodes from Passes 1 and 2.
 
 **Output:** a single SQLite database (`.codekg/graph.sqlite`) with `nodes` and `edges` tables.
 
@@ -99,7 +107,7 @@ The repository is parsed using Python's `ast` module. All `.py` files are traver
 
 ### Phase 2 — Semantic Indexing (SQLite → LanceDB)
 
-To support semantic retrieval, a subset of nodes (`module`, `class`, `function`, `method`) is selected for vector indexing. Embedding text is constructed from names and docstrings, embedded using `sentence-transformers/all-MiniLM-L6-v2`, and stored in **LanceDB**.
+To support semantic retrieval, a subset of nodes (`module`, `class`, `function`, `method`) is selected for vector indexing. Embedding text is constructed from names and docstrings, embedded using `jinaai/jina-embeddings-v3` (1024-dim, overridable via `CODEKG_MODEL`), and stored in **LanceDB**.
 
 The vector index is **derived and disposable**; SQLite remains authoritative.
 
@@ -137,6 +145,12 @@ For retained nodes, CodeKG extracts **source-grounded definition snippets** usin
 
 ---
 
+## Caller Lookup
+
+Because `expand()` traverses edges in both directions, any node can be queried as either a caller or a callee. Given a function node, following `CALLS` edges inward returns all functions that invoke it — a precise, source-grounded reverse call lookup with no text search heuristics.
+
+---
+
 ## Call-Site Extraction
 
 Beyond definitions, CodeKG extracts **call-site snippets** using evidence stored on `CALLS` edges. Small source windows around invocation sites are collected, deduplicated, and ranked. This enables precise answers to questions such as *where is this function used, and under what conditions?*
@@ -148,7 +162,7 @@ Beyond definitions, CodeKG extracts **call-site snippets** using evidence stored
 ```
 Repository
   ↓
-AST parsing  (codekg.py)
+AST parsing — Pass 1: structure, Pass 2: calls, Pass 3: data-flow  (codekg.py + visitor.py)
   ↓
 SQLite graph — nodes + edges  (build_codekg_sqlite.py)
   ↓
@@ -168,43 +182,29 @@ Snippet pack — Markdown / JSON  (codekg_snippet_packer.py)
 
 ## Installation
 
-Clone the repository and install with [Poetry](https://python-poetry.org/):
-
-```bash
-git clone https://github.com/suchanek/code_kg.git
-cd code_kg
-poetry install
-```
-
-To include the MCP server:
-
-```bash
-poetry install --extras mcp
-```
-
 **Requirements:** Python ≥ 3.10, < 3.13
 
-### Using CodeKG in an existing Poetry project
+### Standalone (pip)
 
-If your project is already managed by Poetry, add `code-kg` as a dev dependency
-pointing to the GitHub repository:
+```bash
+pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
+```
+
+### Existing Poetry project
+
+Add `code-kg` as a dev dependency from GitHub:
 
 ```bash
 poetry add --group dev 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
 ```
 
-This installs the package into your Poetry virtualenv and makes all CLI entry
-points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, etc.)
-available via `poetry run`:
+All CLI entry points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, etc.) are available immediately via `poetry run` — no changes to your own `pyproject.toml` required:
 
 ```bash
 poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
 poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 poetry run codekg-mcp --repo . --db .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
-
-No changes to your `pyproject.toml`'s `[tool.poetry.scripts]` section are
-required — the entry points are provided by the `code-kg` package itself.
 
 ---
 
@@ -253,16 +253,6 @@ Once installed, all commands are available via the `python -m code_kg` dispatche
 python -m code_kg --help
 ```
 
-> **Dev workflow:** if you cloned the repo and are working inside the Poetry
-> environment, prefix every command with `poetry run` instead, e.g.
-> `poetry run python -m code_kg build-sqlite`.
-
-> **Quick install (no clone):** the install script (see Quick Start above) handles
-> package installation automatically. To install manually without cloning:
-> ```bash
-> pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
-> ```
-
 ### 1. Build the SQLite knowledge graph
 
 ```bash
@@ -272,7 +262,7 @@ python -m code_kg build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [-
 ### 2. Build the LanceDB semantic index
 
 ```bash
-python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
+python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model jinaai/jina-embeddings-v3] [--wipe]
 ```
 
 ### 3. Run a hybrid query
@@ -380,7 +370,21 @@ poetry install --extras mcp
 | `get_node(node_id)` | Fetch a single node by its stable ID |
 | `graph_stats()` | Node and edge counts by kind/relation |
 
-### Configuring Claude Desktop
+### Automated setup
+
+The Quick Start installer (`curl ... | bash`) writes all MCP config files automatically for every supported provider. The sections below show the generated format for reference, or for manual setup if you prefer not to use the installer.
+
+Alternatively, from inside Claude Code run:
+
+```
+/setup-mcp [/path/to/repo]
+```
+
+This skill verifies installation, builds the graph and index, smoke-tests the pipeline, and writes/updates the config files, reporting a node/edge/vector summary when done.
+
+See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schemas, query strategy guide, and troubleshooting.
+
+### Claude Desktop (manual)
 
 Add a `codekg` entry to `claude_desktop_config.json`
 (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -402,9 +406,9 @@ Add a `codekg` entry to `claude_desktop_config.json`
 
 Use **absolute paths** — Claude Desktop does not inherit your shell's working directory. Restart Claude Desktop after editing the config.
 
-### Configuring Claude Code / Kilo Code (`.mcp.json`)
+### Claude Code / Kilo Code — `.mcp.json` (manual)
 
-Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `command` directly at the `codekg-mcp` binary inside the Poetry virtual environment:
+Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `command` directly at the `codekg-mcp` binary inside the virtual environment:
 
 ```json
 {
@@ -423,7 +427,7 @@ Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `com
 
 > ⚠️ Use per-repo `.mcp.json` only — do NOT add `codekg` to any global settings file.
 
-### Configuring GitHub Copilot (`.vscode/mcp.json`)
+### GitHub Copilot — `.vscode/mcp.json` (manual)
 
 GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key, `"type": "stdio"` required). Each flag and value must be a separate element in `args`:
 
@@ -447,23 +451,6 @@ GitHub Copilot uses `.vscode/mcp.json` with a different schema (`"servers"` key,
 ```
 
 VS Code will prompt you to **Trust** the server on first use.
-
-### Automated Setup with `/setup-mcp`
-
-The repository ships a **Claude skill** that automates the entire MCP setup workflow. From Claude Code, run:
-
-```
-/setup-mcp [/path/to/repo]
-```
-
-The skill will:
-1. Verify CodeKG installation and install the `mcp` extra if needed
-2. Build the SQLite graph and LanceDB index
-3. Smoke-test the full pipeline
-4. Write/update both `.mcp.json` (Claude Code) and `claude_desktop_config.json` (Claude Desktop)
-5. Report a summary with node/edge/vector counts
-
-See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schemas, query strategy guide, and troubleshooting.
 
 ---
 
@@ -523,13 +510,32 @@ code_kg/
 │       ├── index.py
 │       ├── kg.py
 │       ├── mcp_server.py
-│       └── store.py
+│       ├── store.py
+│       └── visitor.py
 ├── tests/
 │   ├── test_graph.py
 │   ├── test_kg.py
 │   ├── test_primitives.py
 │   └── test_store.py
 └── __pycache__/
+```
+
+---
+
+## Development
+
+To work on CodeKG itself, clone the repository and install in editable mode with dev dependencies:
+
+```bash
+git clone https://github.com/suchanek/code_kg.git
+cd code_kg
+poetry install --extras mcp
+```
+
+Run the test suite:
+
+```bash
+poetry run pytest
 ```
 
 ---

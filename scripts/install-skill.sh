@@ -26,16 +26,17 @@
 #
 # What it does:
 #   1. Creates skill directories for Claude Code, Kilo Code, and other agents
-#   2. Downloads SKILL.md and references/installation.md from GitHub
-#      (or copies from local repo if running from within the clone)
-#   3. Installs code-kg[mcp] if codekg-mcp is not found:
+#      and installs SKILL.md + references/installation.md into each
+#   2. Installs Claude Code slash commands (codekg, codekg-rebuild) to ~/.claude/commands/
+#   3. Installs the /codekg slash command into the target repo for Cline
+#   4. Installs code-kg[mcp] if codekg-mcp is not found:
 #        a. pip install from latest GitHub release wheel (preferred, no git needed)
 #        b. pip install from git+https (fallback, needs git)
 #        c. poetry add (fallback for Poetry-managed repos)
-#   4. Builds the SQLite knowledge graph (skips if already present, unless --wipe)
-#   5. Builds the LanceDB vector index  (skips if already present, unless --wipe)
-#   6. Writes provider MCP configs as requested
-#   7. Prints a final summary
+#   5. Builds the SQLite knowledge graph (skips if already present, unless --wipe)
+#   6. Builds the LanceDB vector index  (skips if already present, unless --wipe)
+#   7. Writes provider MCP configs as requested
+#   8. Prints a final summary
 # =============================================================================
 
 set -eo pipefail
@@ -111,6 +112,12 @@ SKILL_DIRS=(
     "${HOME}/.claude/skills/codekg"
     "${HOME}/.kilocode/skills/codekg"
     "${HOME}/.agents/skills/codekg"
+)
+
+# Global Claude Code command files to install to ~/.claude/commands/
+CLAUDE_COMMAND_FILES=(
+    "codekg.md"
+    "codekg-rebuild.md"
 )
 
 # ── Detect if we're running from inside the repo ─────────────────────────────
@@ -195,22 +202,52 @@ for SKILL_DIR in "${SKILL_DIRS[@]}"; do
     echo "  ✓ ${REFS_DIR}/installation.md"
 done
 
-# ── Step 2: Install Cline slash command into the target repo ──────────────────
+# ── Step 2: Install Claude Code commands to ~/.claude/commands/ ───────────────
 echo ""
-echo "── Step 2: Installing Cline slash command ───────────"
+echo "── Step 2: Installing Claude Code commands ──────────"
+echo ""
+
+CLAUDE_CMD_DIR="${HOME}/.claude/commands"
+_exec mkdir -p "$CLAUDE_CMD_DIR"
+
+for _CMD_FILE in "${CLAUDE_COMMAND_FILES[@]}"; do
+    _DST="${CLAUDE_CMD_DIR}/${_CMD_FILE}"
+    _LOCAL_CMD="${REPO_ROOT:+${REPO_ROOT}/.claude/commands/${_CMD_FILE}}"
+
+    if [ -n "$_LOCAL_CMD" ] && [ -f "$_LOCAL_CMD" ]; then
+        _exec cp "$_LOCAL_CMD" "$_DST"
+        echo "  ✓ Copied from local repo → ${_DST}"
+    else
+        if [ -n "$DRY_RUN" ]; then
+            echo "  [dry-run] would download ${RAW_BASE}/.claude/commands/${_CMD_FILE} → ${_DST}"
+        elif command -v curl &>/dev/null; then
+            curl -fsSL "${RAW_BASE}/.claude/commands/${_CMD_FILE}" -o "$_DST"
+            echo "  ✓ Downloaded → ${_DST}"
+        elif command -v wget &>/dev/null; then
+            wget -q "${RAW_BASE}/.claude/commands/${_CMD_FILE}" -O "$_DST"
+            echo "  ✓ Downloaded → ${_DST}"
+        else
+            echo "  ⚠ Neither curl nor wget found — skipping ${_CMD_FILE}"
+        fi
+    fi
+done
+
+# ── Step 3: Install Cline slash command into the target repo ──────────────────
+echo ""
+echo "── Step 3: Installing Cline slash command ───────────"
 echo ""
 
 if [ "$DO_CLINE" = "1" ]; then
     CLINE_CMD_DIR="${TARGET_REPO}/.claude/commands"
     CLINE_CMD_FILE="${CLINE_CMD_DIR}/codekg.md"
-    LOCAL_CMD="${REPO_ROOT:+${REPO_ROOT}/.claude/commands/codekg.md}"
+    _LOCAL_CMD="${REPO_ROOT:+${REPO_ROOT}/.claude/commands/codekg.md}"
 
     _exec mkdir -p "$CLINE_CMD_DIR"
 
     if [ -f "$CLINE_CMD_FILE" ]; then
         echo "  ✓ ${CLINE_CMD_FILE} already exists — skipping"
-    elif [ -n "$LOCAL_CMD" ] && [ -f "$LOCAL_CMD" ]; then
-        _exec cp "$LOCAL_CMD" "$CLINE_CMD_FILE"
+    elif [ -n "$_LOCAL_CMD" ] && [ -f "$_LOCAL_CMD" ]; then
+        _exec cp "$_LOCAL_CMD" "$CLINE_CMD_FILE"
         echo "  ✓ Copied from local repo → ${CLINE_CMD_FILE}"
     else
         # Download from GitHub
@@ -230,9 +267,9 @@ else
     echo "  – Skipped (cline not selected)"
 fi
 
-# ── Step 3: Install code-kg if not already present ────────────────────────────
+# ── Step 4: Install code-kg if not already present ────────────────────────────
 echo ""
-echo "── Step 3: Checking code-kg installation ────────────"
+echo "── Step 4: Checking code-kg installation ────────────"
 echo ""
 
 # Resolve the latest GitHub release wheel URL (requires curl or wget + python3).
@@ -302,7 +339,7 @@ fi
 
 # ── Step 4: Build the SQLite knowledge graph ──────────────────────────────────
 echo ""
-echo "── Step 4: Building SQLite knowledge graph ──────────"
+echo "── Step 5: Building SQLite knowledge graph ──────────"
 echo ""
 
 if [ -f "$SQLITE_DB" ] && [ -z "$WIPE_FLAG" ]; then
@@ -331,7 +368,7 @@ fi
 
 # ── Step 5: Build the LanceDB vector index ────────────────────────────────────
 echo ""
-echo "── Step 5: Building LanceDB vector index ────────────"
+echo "── Step 6: Building LanceDB vector index ────────────"
 echo ""
 
 if [ -d "$LANCEDB_DIR" ] && [ "$(ls -A "$LANCEDB_DIR" 2>/dev/null)" ] && [ -z "$WIPE_FLAG" ]; then
@@ -357,7 +394,7 @@ fi
 
 # ── Step 6: Write .mcp.json (Claude Code / Kilo Code) ────────────────────────
 echo ""
-echo "── Step 6: Configuring .mcp.json (Claude Code / Kilo Code) ──"
+echo "── Step 7: Configuring .mcp.json (Claude Code / Kilo Code) ──"
 echo ""
 
 MCP_JSON="${TARGET_REPO}/.mcp.json"
@@ -415,7 +452,7 @@ fi
 
 # ── Step 7: Write .vscode/mcp.json (GitHub Copilot) ──────────────────────────
 echo ""
-echo "── Step 7: Configuring .vscode/mcp.json (GitHub Copilot) ──"
+echo "── Step 8: Configuring .vscode/mcp.json (GitHub Copilot) ──"
 echo ""
 
 VSCODE_DIR="${TARGET_REPO}/.vscode"
@@ -493,6 +530,10 @@ echo ""
 echo "  Repo:    ${TARGET_REPO}"
 echo "  SQLite:  ${SQLITE_DB}"
 echo "  LanceDB: ${LANCEDB_DIR}"
+echo ""
+echo "  Claude commands installed:"
+echo "    ✓ ~/.claude/commands/codekg.md"
+echo "    ✓ ~/.claude/commands/codekg-rebuild.md"
 echo ""
 echo "  Providers configured:"
 [ "$DO_CLAUDE"  = "1" ] && echo "    ✓ Claude Code    (.mcp.json)"
