@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+---
+
+## [0.2.3] - 2026-02-23
+
+### Added
+
 - **`.claude/commands/codekg-rebuild.md`** — New `/codekg-rebuild` slash command that wipes and rebuilds the CodeKG SQLite knowledge graph and LanceDB semantic index for any repository. Guides the agent through path resolution, `--wipe` builds of both layers, verification, and a structured summary report.
 - **`docs/CHEATSHEET.md`** — Public-facing CodeKG query cheatsheet covering all four MCP tools (`graph_stats`, `query_codebase`, `pack_snippets`, `get_node`) with worked examples, data-flow query patterns, edge type reference table, parameter quick reference, and live codebase stats.
 - **`.claude/skills/codekg/references/CHEATSHEET.md`** — Skill-level copy of the cheatsheet, co-located with the CodeKG skill for agent-side reference.
