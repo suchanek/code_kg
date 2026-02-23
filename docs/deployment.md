@@ -160,7 +160,7 @@ Add to `fly.toml`:
   destination = "/data"
 
 [[services]]
-  internal_port = 8501
+  internal_port = 8500
   protocol = "tcp"
 
   [[services.ports]]

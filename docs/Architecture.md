@@ -17,7 +17,6 @@ The system ships with:
 - A **Python library** (`code_kg`) with a layered class API
 - **CLI entry points** for building and querying the graph
 - A **Streamlit web application** (`codekg-viz`) for interactive exploration
-- A **Docker image** for zero-install deployment
 - An **MCP server** (`codekg-mcp`) for AI agent integration
 - A **`/setup-mcp` Claude skill** for automated MCP configuration
 
@@ -342,7 +341,7 @@ Module nodes show the top-of-file window. Nodes without line info fall back to t
 CodeKG ships an interactive knowledge-graph explorer built with **Streamlit** and **pyvis**.
 
 ```bash
-codekg-viz [--db .codekg/graph.sqlite] [--port 8501]
+codekg-viz [--db .codekg/graph.sqlite] [--port 8500]
 ```
 
 The application provides three tabs:
@@ -358,89 +357,7 @@ The sidebar exposes all build and query controls:
 - **Build Index** — embed nodes → LanceDB
 - **Build All** — full pipeline in one click
 
-The app reads `CODEKG_DB` and `CODEKG_LANCEDB` environment variables so the Docker image works out of the box without manual path configuration.
-
----
-
-## Docker Image
-
-CodeKG ships a Docker image that packages the Streamlit app with all heavy dependencies (`sentence-transformers`, `lancedb`, `pyvis`, `torch`) into a single portable container.
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Host machine                                           │
-│                                                         │
-│  /path/to/repo  ──(read-only)──▶  /workspace  ┐        │
-│                                                │        │
-│  Docker volume codekg-data ◀──────────────────┤        │
-│    /data/codekg.sqlite                         │        │
-│    /data/lancedb/                              │        │
-│                                                │        │
-│  localhost:8501 ◀──────────────────────────────┘        │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Quick Start
-
-```bash
-# Build
-docker build -t codekg:latest .
-
-# Run (analyse current directory)
-docker run -p 8501:8501 \
-  -v $(pwd):/workspace:ro \
-  -v codekg-data:/data \
-  codekg:latest
-```
-
-Open **http://localhost:8501** in your browser.
-
-### Docker Compose (recommended)
-
-```bash
-# Start (build if needed, detached)
-docker compose up -d
-
-# Analyse a specific repo
-REPO_ROOT=/path/to/your/repo docker compose up -d
-
-# Use a different host port
-CODEKG_PORT=8510 docker compose up -d
-
-# Stop (volume preserved)
-docker compose down
-
-# Full reset (wipes graph data)
-docker compose down -v
-```
-
-### Key Design Decisions
-
-- **`python:3.11-slim`** base image — keeps the image small
-- **Poetry 2.x** for reproducible dependency installation
-- **Layer ordering** — `pyproject.toml`/`poetry.lock` copied before source files; source-only changes rebuild in seconds, not minutes
-- **Named volume `codekg-data`** — SQLite graph and LanceDB index persist across container restarts
-- **Read-only workspace mount** — the analysed repository is never modified
-
-### Docker Files
-
-| File | Purpose |
-|---|---|
-| `Dockerfile` | Image definition (python:3.11-slim + Poetry 2.x) |
-| `docker-compose.yml` | Service orchestration with volumes, env vars, healthcheck |
-| `.dockerignore` | Keeps build context lean |
-| `.streamlit/config.toml` | Baked-in Streamlit server config (headless, dark theme) |
-
-### Environment Variables
-
-| Variable | Default (container) | Description |
-|---|---|---|
-| `CODEKG_DB` | `/data/codekg.sqlite` | SQLite knowledge graph path |
-| `CODEKG_LANCEDB` | `/data/lancedb` | LanceDB vector index directory |
-| `CODEKG_PORT` | `8501` | Host port (compose only) |
-| `REPO_ROOT` | `./` | Host path mounted at `/workspace` (compose only) |
-
-See `docs/docker.md` for the full Docker reference.
+The app reads `CODEKG_DB` and `CODEKG_LANCEDB` environment variables so the default paths can be customised without manual configuration.
 
 ---
 
@@ -606,8 +523,6 @@ code_kg/
 │   ├── codekg_viz.py            # CLI: launch Streamlit visualizer
 │   ├── app.py                   # Streamlit web application
 │   └── mcp_server.py            # MCP server (FastMCP, optional dep)
-├── Dockerfile                   # Docker image definition
-├── docker-compose.yml           # Docker Compose service
 ├── .streamlit/config.toml       # Streamlit server config
 ├── .mcp.json                    # Claude Code MCP configuration
 ├── .claude/commands/setup-mcp.md # /setup-mcp Claude skill
@@ -618,8 +533,7 @@ code_kg/
 │   └── test_kg.py               # CodeKG, result types, span utilities (28 tests)
 └── docs/
     ├── Architecture.md          # This document
-    ├── MCP.md                   # MCP server reference
-    └── docker.md                # Docker setup reference
+    └── MCP.md                   # MCP server reference
 ```
 
 ---

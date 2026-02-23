@@ -19,6 +19,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from code_kg.codekg import DEFAULT_MODEL
 from code_kg.graph import CodeGraph
 from code_kg.index import Embedder, SemanticIndex, SentenceTransformerEmbedder
 from code_kg.store import DEFAULT_RELS, GraphStore, ProvMeta
@@ -306,7 +307,7 @@ class CodeKG:
         db_path: str | Path,
         lancedb_dir: str | Path,
         *,
-        model: str = "all-MiniLM-L6-v2",
+        model: str = DEFAULT_MODEL,
         table: str = "codekg_nodes",
     ) -> None:
         self.repo_root = Path(repo_root).resolve()

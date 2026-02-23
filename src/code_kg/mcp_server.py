@@ -70,6 +70,7 @@ except ImportError:
     sys.exit(1)
 
 from code_kg import CodeKG
+from code_kg.codekg import DEFAULT_MODEL
 from code_kg.store import DEFAULT_RELS
 
 # ---------------------------------------------------------------------------
@@ -241,8 +242,8 @@ def _parse_args(argv: list | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--model",
-        default="all-MiniLM-L6-v2",
-        help="Sentence-transformer model name (default: all-MiniLM-L6-v2)",
+        default=DEFAULT_MODEL,
+        help=f"Sentence-transformer model name (default: {DEFAULT_MODEL})",
     )
     p.add_argument(
         "--transport",

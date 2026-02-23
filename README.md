@@ -1,7 +1,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
 [![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/suchanek/code_kg/releases)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/suchanek/code_kg/releases)
 [![CI](https://github.com/suchanek/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/suchanek/code_kg/actions/workflows/ci.yml)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
@@ -316,7 +316,7 @@ python -m code_kg pack \
 ### 5. Launch the Streamlit visualizer
 
 ```bash
-python -m code_kg viz [--db .codekg/graph.sqlite] [--port 8501]
+python -m code_kg viz [--db .codekg/graph.sqlite] [--port 8500]
 ```
 
 ### 6. Start the MCP server
@@ -347,12 +347,6 @@ The app provides three tabs:
 | **📦 Snippet Pack** | Query → source-grounded code snippets; download as Markdown or JSON |
 
 The sidebar provides one-click **Build Graph**, **Build Index**, and **Build All** buttons so you can index a new codebase without leaving the browser.
-
----
-
-## Docker _(work in progress)_
-
-A Docker image that packages the Streamlit app with all dependencies is included, but multi-repository support — cleanly switching which codebase is indexed without restarting the container — is still being worked out. This section will be expanded once that workflow is stable.
 
 ---
 
@@ -494,9 +488,6 @@ code_kg/
 ├── README.md
 ├── release-notes.md
 ├── pyproject.toml
-├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile
 ├── docs/
 │   ├── Architecture.md
 │   ├── code_kg_medium.md
@@ -505,7 +496,6 @@ code_kg/
 │   ├── code_kg.md
 │   ├── code_kg.tex
 │   ├── deployment.md
-│   ├── docker.md
 │   ├── MCP.md
 │   └── logo.png
 ├── lib/

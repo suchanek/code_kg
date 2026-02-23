@@ -28,11 +28,11 @@ Low-level primitives (v0 contract, locked)::
     from code_kg import Node, Edge
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Eric G. Suchanek, PhD"
 
 # Low-level primitives (locked v0 contract)
-from code_kg.codekg import Edge, Node
+from code_kg.codekg import DEFAULT_MODEL, Edge, Node
 
 # Layered classes
 from code_kg.graph import CodeGraph
@@ -46,6 +46,7 @@ __all__ = [
     # primitives
     "Node",
     "Edge",
+    "DEFAULT_MODEL",
     # layers
     "CodeGraph",
     "GraphStore",

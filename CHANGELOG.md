@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-02-23
+
+### Added
+
+- **`src/code_kg/codekg.py` — `DEFAULT_MODEL` constant** — Sentence-transformer model name centralised in a single constant (`jinaai/jina-embeddings-v3`), overridable via the `CODEKG_MODEL` environment variable. Exported from the top-level `code_kg` package.
+- **`src/code_kg/codekg.py` — data-flow edge kinds** — Four new edge relation types added to `EDGE_KINDS`: `READS`, `WRITES`, `ATTR_ACCESS`, `DEPENDS_ON`, extending the knowledge graph beyond structural edges.
+- **`src/code_kg/codekg.py` — Pass 3 data-flow extraction** — `extract_repo()` now runs a third AST pass using `CodeKGVisitor` to emit data-flow edges (`READS`, `WRITES`, `ATTR_ACCESS`) alongside the existing structural and call-graph passes. New symbol/var nodes and edges are merged non-destructively.
+- **`src/code_kg/visitor.py` — `visit_AsyncFunctionDef`** — Async functions now receive the same scope-tracking, parameter-seeding, and data-flow extraction treatment as synchronous functions.
+- **`src/code_kg/visitor.py` — `_seed_params`** — All function/method parameters (positional, keyword-only, `*args`, `**kwargs`) are seeded into the local variable scope at function entry, preventing spurious `READS` edges for parameter names.
+- **`tests/test_visitor.py`** — New test suite (158 lines) for `CodeKGVisitor`, covering scope management, assignment tracking, `READS`/`WRITES`/`ATTR_ACCESS` edge emission, and async function handling.
+- **`pyproject.toml`** — Added `einops ^0.8.2` and `transformers >=4.44,<5.0` as runtime dependencies (required by `jinaai/jina-embeddings-v3`).
+
+### Changed
+
+- **Default embedding model** — Switched from `all-MiniLM-L6-v2` (384-dim) to `jinaai/jina-embeddings-v3` (1024-dim) across `index.py`, `kg.py`, `mcp_server.py`, and `app.py`. Fallback embedding dimension updated from 384 → 1024.
+- **`src/code_kg/index.py` — `SentenceTransformerEmbedder`** — `trust_remote_code=True` passed to `SentenceTransformer` constructor to support models that ship custom pooling code (e.g. Jina v3).
+- **`src/code_kg/visitor.py` — `_get_node_id`** — Now uses the project's canonical `kind:module:qualname` node-ID convention via `node_id()` from `codekg.py`, replacing a placeholder string identity.
+- **`src/code_kg/visitor.py` — `_qualname`** — Simplified to use `current_scope[-1]` as the parent prefix, fixing spurious double-scoping.
+- **`src/code_kg/codekg.py` — `SKIP_DIRS`** — Added `.codekg` to the set of directories excluded from AST traversal.
+- **`src/code_kg/app.py`** — `jinaai/jina-embeddings-v3` added as the first (default) option in the embedding model selector.
+- **`README.md`** — Version badge updated to `0.2.1`; Streamlit visualizer port corrected from `8501` to `8500`; Docker section and docker-related project structure entries removed.
+- **`docs/Architecture.md`** — Docker Image section removed; Streamlit visualizer port corrected from `8501` to `8500`; Docker files removed from source layout listing.
+- **`docs/deployment.md`** — Fly.io `internal_port` corrected from `8501` to `8500`.
+- **`pyproject.toml`** + **`src/code_kg/__init__.py`** — Version bumped to `0.2.1`.
+- **`tests/test_index.py`** — Updated assertion for `SentenceTransformerEmbedder` initialisation to expect `trust_remote_code=True`.
+
+### Removed
+
+- **`docker/Dockerfile`** + **`docker/docker-compose.yml`** + **`.dockerignore`** — Docker deployment infrastructure removed entirely.
+- **`docs/docker.md`** — Docker setup reference removed.
+- **`docs/code_kg.md`** + **`docs/code_kg.tex`** + **`docs/code_kg_medium.md`** — Legacy design documents and LaTeX source removed; architecture is covered by `docs/Architecture.md`.
+
+---
+
 ## [0.2.0] - 2026-02-21
 
 ### Added

@@ -25,6 +25,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # ============================================================================
+# Configuration
+# ============================================================================
+
+#: Default sentence-transformer model.  Override via the ``CODEKG_MODEL``
+#: environment variable, e.g. ``export CODEKG_MODEL=all-MiniLM-L6-v2``.
+DEFAULT_MODEL: str = os.environ.get("CODEKG_MODEL", "jinaai/jina-embeddings-v3")
+
+# ============================================================================
 # Graph primitives (LOCKED v0 CONTRACT)
 # ============================================================================
 
@@ -76,7 +84,16 @@ class Edge:
 # ============================================================================
 
 NODE_KINDS = {"module", "class", "function", "method", "symbol"}
-EDGE_KINDS = {"CONTAINS", "IMPORTS", "INHERITS", "CALLS"}
+EDGE_KINDS = {
+    "CONTAINS",
+    "IMPORTS",
+    "INHERITS",
+    "CALLS",
+    "READS",
+    "WRITES",
+    "ATTR_ACCESS",
+    "DEPENDS_ON",
+}
 
 SKIP_DIRS = {
     ".git",
@@ -85,6 +102,7 @@ SKIP_DIRS = {
     "__pycache__",
     ".mypy_cache",
     ".pytest_cache",
+    ".codekg",
 }
 
 
@@ -427,6 +445,41 @@ def extract_repo(repo_root: Path) -> tuple[list[Node], list[Edge]]:
                     "lineno": getattr(n, "lineno", None),
                     "expr": callee,
                 },
+            )
+
+        # ------------------------------------------------------------------
+        # PASS 3: data-flow edges via CodeKGVisitor (READS, WRITES, ATTR_ACCESS)
+        # ------------------------------------------------------------------
+
+        # Local import breaks the codekg ↔ visitor circular dependency.
+        from code_kg.visitor import CodeKGVisitor  # noqa: PLC0415
+
+        vis = CodeKGVisitor(module_id=module, file_path=str(pyfile))
+        vis.visit(tree)
+        vis_nodes, vis_edges = vis.finalize()
+
+        # Merge new symbol/var nodes that Pass 1 didn't create.
+        for nid, props in vis_nodes.items():
+            nodes.setdefault(
+                nid,
+                Node(
+                    id=nid,
+                    kind=props["kind"],
+                    name=props["qualname"].split(".")[-1],
+                    qualname=props["qualname"],
+                    module_path=module,
+                    lineno=None,
+                    end_lineno=None,
+                    docstring=None,
+                ),
+            )
+
+        # Merge data-flow edges; setdefault keeps Pass 1/2 edges authoritative
+        # for any CONTAINS/CALLS duplicates.
+        for src_id, tgt_id, rel, ev in vis_edges:
+            edges.setdefault(
+                (src_id, rel, tgt_id),
+                Edge(src=src_id, rel=rel, dst=tgt_id, evidence=ev),
             )
 
     return list(nodes.values()), list(edges.values())

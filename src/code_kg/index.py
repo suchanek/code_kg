@@ -18,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
+from code_kg.codekg import DEFAULT_MODEL
+
 # ---------------------------------------------------------------------------
 # Embedder interface (pluggable)
 # ---------------------------------------------------------------------------
@@ -60,15 +62,15 @@ class SentenceTransformerEmbedder(Embedder):
     Local embedding via ``sentence-transformers``.
 
     :param model_name: HuggingFace model name or local path.
-                       Defaults to ``"all-MiniLM-L6-v2"``.
+                       Defaults to :data:`~code_kg.codekg.DEFAULT_MODEL`.
     """
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
         from sentence_transformers import SentenceTransformer
 
-        self.model = SentenceTransformer(model_name)
+        self.model = SentenceTransformer(model_name, trust_remote_code=True)
         self.model_name = model_name
-        self.dim: int = self.model.get_sentence_embedding_dimension() or 384
+        self.dim: int = self.model.get_sentence_embedding_dimension() or 1024
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         vecs = self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
@@ -141,7 +143,7 @@ class SemanticIndex:
     :param lancedb_dir: Directory for the LanceDB database.
     :param embedder: Embedding backend.  Defaults to
                      :class:`SentenceTransformerEmbedder` with
-                     ``all-MiniLM-L6-v2``.
+                     :data:`~code_kg.codekg.DEFAULT_MODEL`.
     :param table: LanceDB table name.  Defaults to ``"codekg_nodes"``.
     :param index_kinds: Node kinds to embed.
     """

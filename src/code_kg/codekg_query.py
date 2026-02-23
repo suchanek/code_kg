@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from code_kg.codekg import DEFAULT_MODEL
 from code_kg.kg import CodeKG
 from code_kg.store import DEFAULT_RELS
 
@@ -35,8 +36,8 @@ def main() -> None:
     p.add_argument("--table", default="codekg_nodes", help="LanceDB table name")
     p.add_argument(
         "--model",
-        default="all-MiniLM-L6-v2",
-        help="SentenceTransformer model (must match index)",
+        default=DEFAULT_MODEL,
+        help=f"SentenceTransformer model (must match index; default: {DEFAULT_MODEL})",
     )
     p.add_argument("--q", required=True, help="Semantic query")
     p.add_argument("--k", type=int, default=8, help="Top-k semantic hits")

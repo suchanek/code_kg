@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from code_kg.codekg import DEFAULT_MODEL
 from code_kg.index import SemanticIndex, SentenceTransformerEmbedder
 from code_kg.store import GraphStore
 
@@ -38,7 +39,11 @@ def main() -> None:
         help="Directory for LanceDB (default: <repo>/.codekg/lancedb)",
     )
     p.add_argument("--table", default="codekg_nodes", help="LanceDB table name")
-    p.add_argument("--model", default="all-MiniLM-L6-v2", help="SentenceTransformer model name")
+    p.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"SentenceTransformer model name (default: {DEFAULT_MODEL})",
+    )
     p.add_argument("--wipe", action="store_true", help="Delete existing vectors first")
     p.add_argument(
         "--kinds",
