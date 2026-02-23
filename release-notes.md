@@ -1,89 +1,78 @@
-## CodeKG v0.2.0
+## CodeKG v0.2.1
 
-> **Major refactor: layered architecture, zero-config CLI, MCP token efficiency**
+> **Data-flow graph edges, Jina v3 embeddings, and agent tooling**
 
-This release completes the architectural rewrite begun after v0.1.0, promotes the package to **Beta**, and ships several quality-of-life improvements for AI agents consuming the MCP tools.
+This release adds a third AST pass that captures how data moves through your code, upgrades the default embedding model for significantly richer semantic search, and ships new agent tooling for zero-friction knowledge graph rebuilds.
 
 ---
 
 ### Highlights
 
-#### Layered Architecture
+#### Data-Flow Graph (Pass 3)
 
-The monolithic extraction code has been split into three composable layers with a clean orchestrator on top:
+The knowledge graph now tracks data movement alongside structure and call graphs. A new `CodeKGVisitor` runs a third AST pass and emits four new edge types:
 
-| Module | Class | Role |
-|--------|-------|------|
-| `graph.py` | `CodeGraph` | Pure AST extraction, no side effects |
-| `store.py` | `GraphStore` | SQLite persistence + graph traversal |
-| `index.py` | `SemanticIndex` | LanceDB semantic search + `Embedder` ABC |
-| `kg.py` | `CodeKG` | Orchestrator: build, query, pack |
+| Edge | Meaning |
+|------|---------|
+| `READS` | A function reads a variable or parameter |
+| `WRITES` | A function writes (assigns) a variable |
+| `ATTR_ACCESS` | An attribute is accessed on an object |
+| `DEPENDS_ON` | A derived dependency relationship |
 
-All result types (`BuildStats`, `QueryResult`, `Snippet`, `SnippetPack`) are importable directly from `code_kg`.
+This makes queries like *"what does this function read?"* or *"which methods write to this field?"* precise and grounded — not inferred from call graphs.
 
-#### `python -m code_kg` — Zero-Dependency Invocation
+Scope tracking is exact: `_seed_params` pre-populates function scope with all parameters (positional, keyword-only, `*args`, `**kwargs`), preventing spurious `READS` edges on parameter names. Async functions (`async def`) receive full scope treatment via `visit_AsyncFunctionDef`.
 
-A new `__main__.py` dispatcher makes every subcommand available without an activated venv or `poetry run`:
+#### Jina v3 Embeddings
 
-```bash
-python -m code_kg build-sqlite
-python -m code_kg build-lancedb
-python -m code_kg query --q "database connection"
-python -m code_kg mcp
-```
+The default embedding model upgrades from `all-MiniLM-L6-v2` (384-dim) to `jinaai/jina-embeddings-v3` (1024-dim). Semantic search results are noticeably richer, especially for nuanced queries about code behaviour.
 
-All CLI entry points now have zero-config defaults — run from a repo root and `.codekg/graph.sqlite` / `.codekg/lancedb` are used automatically.
+The model name is centralised in a `DEFAULT_MODEL` constant and overridable via the `CODEKG_MODEL` environment variable — no code changes needed to swap models.
 
-#### MCP Token Efficiency
+#### `/codekg-rebuild` Slash Command
 
-Two changes reduce context-window pressure for AI agents:
+A new Claude Code slash command guides agents through a complete wipe-and-rebuild of the SQLite knowledge graph and LanceDB semantic index for any repository. Covers path resolution, `--wipe` builds of both layers, index verification, and a structured summary report.
 
-- **`query_codebase`** — new `max_nodes` parameter (default **25**) caps the node list so large graphs don't flood the context.
-- **`pack_snippets`** — defaults tightened: `max_lines` **160 → 60**, `max_nodes` **50 → 15**. Snippet packs are now concise by default; pass larger values explicitly when needed.
+#### Query Cheatsheet
 
-#### Install Script Overhaul
+`docs/CHEATSHEET.md` is a reference card for all four MCP tools, covering:
+- Worked examples for `graph_stats`, `query_codebase`, `pack_snippets`, `get_node`
+- Data-flow query patterns using the new edge types
+- Full edge type reference table
+- Parameter quick reference
 
-`scripts/install-skill.sh` no longer requires Poetry or an activated venv:
-
-- Detects the right Python interpreter automatically (`.venv/bin/python` → `python3` on PATH → `pip install`)
-- Writes MCP configs with the absolute Python path and `-m code_kg mcp` args
-- New flags: `--providers` (selectively configure `claude`, `kilo`, `copilot`, `cline`), `--dry-run`, `--wipe`
-
-#### `.codekg/` Unified Artifact Directory
-
-All generated artifacts now live under `.codekg/`:
-
-```
-.codekg/
-├── graph.sqlite     # knowledge graph
-└── lancedb/         # vector index
-```
-
-Updated across all CLI tools, the MCP server, `.mcp.json`, `.vscode/mcp.json`, and all documentation.
+A copy is bundled inside the CodeKG skill at `.claude/skills/codekg/references/CHEATSHEET.md` for agent-side access.
 
 ---
 
-### MCP Tools
+### What's New
 
-| Tool | Description |
-|------|-------------|
-| `graph_stats` | Node/edge counts broken down by kind |
-| `query_codebase` | Hybrid semantic + graph traversal; supports `max_nodes` cap |
-| `pack_snippets` | Source-grounded snippet extraction with tighter defaults |
-| `get_node` | Fetch a single node by stable ID |
+- **`src/code_kg/visitor.py`** — `CodeKGVisitor` for scope-aware data-flow extraction
+- **`src/code_kg/codekg.py`** — `DEFAULT_MODEL` constant; four new `EDGE_KINDS`; `.codekg/` excluded from AST traversal; Pass 3 integration in `extract_repo()`
+- **`src/code_kg/index.py`** — `trust_remote_code=True` for Jina v3; embedding dimension fallback updated to 1024
+- **`pyproject.toml`** — `einops ^0.8.2` and `transformers >=4.44,<5.0` added as runtime dependencies (required by Jina v3)
+- **`tests/test_visitor.py`** — 158-line test suite covering scope management, assignment tracking, and `READS`/`WRITES`/`ATTR_ACCESS` edge emission
+- **`.claude/commands/codekg-rebuild.md`** — `/codekg-rebuild` slash command
+- **`docs/CHEATSHEET.md`** — Public query cheatsheet
+- **`README.md`** — Caller Lookup section documenting bidirectional edge traversal; Development section with clone + install workflow
+
+### Removed
+
+- **Docker infrastructure** (`Dockerfile`, `docker-compose.yml`, `.dockerignore`, `docs/docker.md`) — superseded by direct pip / Poetry install
+- **Legacy design documents** (`docs/code_kg.pdf`, `docs/code_kg.md`, `docs/code_kg.tex`) — superseded by `docs/Architecture.md` and `docs/CHEATSHEET.md`
 
 ---
 
 ### Installation
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh)
 ```
 
 Or to reinstall / update an existing deployment:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh) --wipe
+bash <(curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh) --wipe
 ```
 
 See the [README](README.md) for full usage and configuration details.
