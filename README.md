@@ -1,8 +1,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
 [![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
-[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/suchanek/code_kg/releases)
-[![CI](https://github.com/suchanek/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/suchanek/code_kg/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Flux-Frontiers/code_kg/releases)
+[![CI](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
 <p align="center">
@@ -187,7 +187,7 @@ Snippet pack — Markdown / JSON  (codekg_snippet_packer.py)
 ### Standalone (pip)
 
 ```bash
-pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
+pip install 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'
 ```
 
 ### Existing Poetry project
@@ -195,7 +195,7 @@ pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
 Add `code-kg` as a dev dependency from GitHub:
 
 ```bash
-poetry add --group dev 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'
+poetry add --group dev 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'
 ```
 
 All CLI entry points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, etc.) are available immediately via `poetry run` — no changes to your own `pyproject.toml` required:
@@ -213,14 +213,14 @@ poetry run codekg-mcp --repo . --db .codekg/graph.sqlite --lancedb .codekg/lance
 The fastest way to integrate CodeKG into any Python repository — run the one-line installer from within the repo you want to index:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh | bash
 ```
 
 The installer sets up the full **AI integration layer** end-to-end:
 
 1. Installs `SKILL.md` reference files for Claude Code, Kilo Code, and other agents
 2. Installs the `/codekg` slash command for Cline
-3. Installs the `code-kg` package if not already present — prefers the latest GitHub release wheel (`pip install 'code-kg[mcp] @ <wheel-url>'`), falls back to `pip install 'code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git'`
+3. Installs the `code-kg` package if not already present — prefers the latest GitHub release wheel (`pip install 'code-kg[mcp] @ <wheel-url>'`), falls back to `pip install 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'`
 4. Builds the SQLite knowledge graph (`.codekg/graph.sqlite`) and LanceDB semantic index
 5. Writes MCP configuration for each provider:
    - `.mcp.json` — Claude Code and Kilo Code
@@ -527,7 +527,7 @@ code_kg/
 To work on CodeKG itself, clone the repository and install in editable mode with dev dependencies:
 
 ```bash
-git clone https://github.com/suchanek/code_kg.git
+git clone https://github.com/Flux-Frontiers/code_kg.git
 cd code_kg
 poetry install --extras mcp
 ```

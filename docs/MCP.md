@@ -25,7 +25,7 @@ Once configured, the agent gains four tools:
 
 ```bash
 # 1. Install code-kg with the MCP extra into your project
-poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
+poetry add "code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git"
 
 # 2. Build the knowledge graph
 poetry run codekg-build-sqlite  --repo . --db .codekg/graph.sqlite
@@ -52,7 +52,7 @@ Or use the automated setup command inside Claude Code / Kilo Code:
 On a **brand-new machine** the Claude skill doesn't exist yet, so Claude won't know how to help you set up CodeKG. Install the skill first with a single command — no clone required:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh | bash
 ```
 
 Or, if you already have the repo cloned:
@@ -92,17 +92,17 @@ In the target project's directory:
 
 ```bash
 # Basic install (no MCP server)
-poetry add git+https://github.com/suchanek/code_kg.git
+poetry add git+https://github.com/Flux-Frontiers/code_kg.git
 
 # With MCP server support (required for codekg-mcp)
-poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
+poetry add "code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git"
 ```
 
 This adds the following to your `pyproject.toml`:
 
 ```toml
 [tool.poetry.dependencies]
-code-kg = { git = "https://github.com/suchanek/code_kg.git", extras = ["mcp"] }
+code-kg = { git = "https://github.com/Flux-Frontiers/code_kg.git", extras = ["mcp"] }
 ```
 
 Then run:
@@ -114,7 +114,7 @@ poetry lock && poetry install
 ### 1b. Pin to a specific commit
 
 ```toml
-code-kg = { git = "https://github.com/suchanek/code_kg.git", rev = "66d565f", extras = ["mcp"] }
+code-kg = { git = "https://github.com/Flux-Frontiers/code_kg.git", rev = "66d565f", extras = ["mcp"] }
 ```
 
 ### 1c. Verify the install
@@ -437,7 +437,7 @@ The CodeKG skill gives AI agents expert knowledge about CodeKG installation and 
 bash scripts/install-skill.sh
 
 # Or without cloning (one-liner)
-curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh | bash
 ```
 
 The script installs `SKILL.md` and `references/installation.md` to all three skill directories and injects the `codekg` MCP entry into `.mcp.json` in the current directory.

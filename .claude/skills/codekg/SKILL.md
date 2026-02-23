@@ -15,12 +15,12 @@ CodeKG indexes Python repos into a hybrid knowledge graph (SQLite + LanceDB) and
 
 ```bash
 # With MCP server support
-poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
+poetry add "code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git"
 ```
 
 Adds to `pyproject.toml`:
 ```toml
-code-kg = { git = "https://github.com/suchanek/code_kg.git", extras = ["mcp"] }
+code-kg = { git = "https://github.com/Flux-Frontiers/code_kg.git", extras = ["mcp"] }
 ```
 
 ## Build the Knowledge Graph
@@ -79,7 +79,7 @@ poetry run codekg-build-lancedb --repo .
 bash scripts/install-skill.sh --wipe
 
 # Or via curl if not running from a local clone
-curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh \
+curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh \
   | bash -s -- --wipe
 ```
 

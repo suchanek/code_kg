@@ -12,7 +12,7 @@
 #   cline    — Cline        (.claude/commands/codekg.md slash command)
 #
 # Usage (from a target repo, no clone needed):
-#   curl -fsSL https://raw.githubusercontent.com/suchanek/code_kg/main/scripts/install-skill.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts/install-skill.sh | bash
 #
 # With provider selection:
 #   curl -fsSL .../install-skill.sh | bash -s -- --providers all
@@ -103,7 +103,7 @@ for _p in "${_PLIST[@]}"; do
     _enable_provider "$(echo "$_p" | tr -d ' ')"
 done
 
-REPO="suchanek/code_kg"
+REPO="Flux-Frontiers/code_kg"
 BRANCH="main"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 
@@ -547,4 +547,4 @@ echo "    Cmd+Shift+P → 'Developer: Reload Window'"
 echo ""
 [ "$DO_COPILOT" = "1" ] && echo "  GitHub Copilot: VS Code will prompt you to Trust the codekg server on first use."
 echo ""
-echo "  Full docs: https://github.com/suchanek/code_kg/blob/main/docs/MCP.md"
+echo "  Full docs: https://github.com/Flux-Frontiers/code_kg/blob/main/docs/MCP.md"

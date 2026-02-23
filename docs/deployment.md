@@ -116,9 +116,9 @@ git push origin v0.1.0
 
 The fastest way to share the Streamlit app publicly — free tier available.
 
-1. Push the repo to GitHub (already done: `github.com/suchanek/code_kg`)
+1. Push the repo to GitHub (already done: `github.com/Flux-Frontiers/code_kg`)
 2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**
-3. Select repo `suchanek/code_kg`, branch `main`, main file `src/code_kg/app.py`
+3. Select repo `Flux-Frontiers/code_kg`, branch `main`, main file `src/code_kg/app.py`
 4. Add a `requirements.txt` (Streamlit Cloud doesn't use Poetry directly):
 
 ```bash
@@ -190,7 +190,7 @@ gh release create v0.1.0 dist/* \
 Users install directly from the release:
 
 ```bash
-pip install https://github.com/suchanek/code_kg/releases/download/v0.1.0/code_kg-0.1.0-py3-none-any.whl
+pip install https://github.com/Flux-Frontiers/code_kg/releases/download/v0.1.0/code_kg-0.1.0-py3-none-any.whl
 ```
 
 ---
@@ -203,7 +203,7 @@ CodeKG ships a production-ready MCP server (`codekg-mcp`) that exposes the full 
 
 ```bash
 # With MCP server support
-poetry add "code-kg[mcp] @ git+https://github.com/suchanek/code_kg.git"
+poetry add "code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git"
 # or
 pip install "code-kg[mcp]"
 ```
