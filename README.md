@@ -1,6 +1,6 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
-[![License: PolyForm NC](https://img.shields.io/badge/License-PolyForm%20NC%201.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
+[![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic%202.0-blue.svg)](https://www.elastic.co/licensing/elastic-license)
 [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Flux-Frontiers/code_kg/releases)
 [![CI](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
@@ -13,7 +13,10 @@
 with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Author: Eric G. Suchanek, PhD*
+
 *Flux-Frontiers, Liberty TWP, OH*
+
+[Technical Paper (PDF)](docs/code_kg.pdf)
 
 ---
 
@@ -542,6 +545,6 @@ poetry run pytest
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — see [LICENSE](LICENSE).
+[Elastic License 2.0](https://www.elastic.co/licensing/elastic-license) — see [LICENSE](LICENSE).
 
-Free for personal use, research, education, and noncommercial organizations. Commercial use requires a separate license.
+Free to use, modify, and distribute. You may not offer the software as a hosted or managed service to third parties. Commercial use internally is permitted.

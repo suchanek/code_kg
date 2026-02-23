@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "code-kg"
-version = "0.2.1"
+version = "0.2.2"
 description = "A tool to build a searchable knowledge graph from Python repositories"
 authors = ["Eric G. Suchanek, PhD <suchanek@mac.com>"]
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -22,7 +22,7 @@ packages = [{ include = "code_kg", from = "src" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-lancedb = ">=0.6.0"
+lancedb = ">=0.29.0"
 numpy = ">=1.24.0"
 sentence-transformers = ">=2.7.0"
 streamlit = ">=1.35.0"

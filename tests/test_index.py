@@ -345,3 +345,18 @@ def test_semanticindex_get_table_opens_when_none(tmp_path):
     tbl = idx._get_table()
     assert tbl is not None
     store.close()
+
+
+def test_semanticindex_open_table_existing(tmp_path):
+    """_open_table must use table_names() (LanceDB >=0.23.0) when the table already exists."""
+    store = _make_populated_store(tmp_path)
+    ldb_dir = tmp_path / "ldb"
+    idx = SemanticIndex(ldb_dir, embedder=FakeEmbedder())
+    first_stats = idx.build(store)
+
+    # Second build on the same directory: _open_table hits the "table exists" branch.
+    idx2 = SemanticIndex(ldb_dir, embedder=FakeEmbedder())
+    second_stats = idx2.build(store)
+
+    assert second_stats["indexed_rows"] == first_stats["indexed_rows"]
+    store.close()

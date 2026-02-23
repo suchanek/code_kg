@@ -26,6 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.2] - 2026-02-23
+
+### Added
+
+- **`docs/code_kg.pdf`** — Technical paper added to repository and linked from README.
+- **`.claude/commands/release.md`** — New `/release` slash command for the release workflow.
+- **`tests/test_index.py` — `test_semanticindex_open_table_existing`** — Regression test that exercises the "table already exists" branch of `_open_table`, ensuring the `list_tables().tables` API check is covered on every run.
+
+### Changed
+
+- **`LICENSE`** — Switched from PolyForm Noncommercial 1.0.0 to Elastic License 2.0.
+- **`README.md`** — License badge and footer updated to Elastic 2.0; version badge updated to `0.2.2`; technical paper link added.
+- **`.gitignore`** — Removed `*.pdf` exclusion so `docs/code_kg.pdf` is tracked.
+- **`pyproject.toml`** + **`src/code_kg/__init__.py`** — Version bumped to `0.2.2`; lancedb dependency tightened to `>=0.29.0` to match the `list_tables().tables` API introduced in that release.
+
+---
+
 ## [0.2.1] - 2026-02-23
 
 ### Added
