@@ -220,7 +220,7 @@ __marimo__/
 
 # CodeKG generated artifacts (derived, rebuildable)
 .codekg/
-.DS_Store
+**/.DS_Store
 
 # Local MCP configuration (contains absolute paths)
 .mcp.json
