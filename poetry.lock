@@ -708,19 +708,6 @@ files = [
 ]
 
 [[package]]
-name = "einops"
-version = "0.8.2"
-description = "A new flavour of deep learning operations"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-markers = "python_version <= \"3.11\" or python_version >= \"3.12\""
-files = [
-    {file = "einops-0.8.2-py3-none-any.whl", hash = "sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193"},
-    {file = "einops-0.8.2.tar.gz", hash = "sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827"},
-]
-
-[[package]]
 name = "exceptiongroup"
 version = "1.3.1"
 description = "Backport of PEP 654 (exception groups)"
@@ -4188,4 +4175,4 @@ mcp = ["mcp"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "d296a44ab8fba61afa6e5fde87f8690e63d5df2e62b16eb318ce29148626d3e7"
+content-hash = "d2e7386dc9b8c0fd10c4731d952f87fbf581da0ff594badeb91a1f706fdfbd1a"
