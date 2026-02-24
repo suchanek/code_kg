@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+---
+
+## [0.3.0] - 2026-02-23
+
+### Added
+
 - **`GraphStore.resolve_symbols()`** (`store.py`) — Post-build step that adds `RESOLVES_TO` edges from `sym:` stub nodes to their matching first-party definitions (`fn:`, `cls:`, `m:`, `mod:`) by name. Called automatically after `GraphStore.write()` in `CodeKG.build_graph()` and `codekg-build-sqlite`. Enables fan-in queries across module boundaries by connecting import-alias call sites to their canonical definition nodes. Idempotent.
 - **`GraphStore.callers_of(node_id, *, rel="CALLS")`** (`store.py`) — Two-phase reverse lookup (fan-in): returns direct incoming `rel` edges plus callers that reach the target through `sym:` stubs resolved via `RESOLVES_TO`. Returns deduplicated caller node dicts.
 - **`CodeKG.callers(node_id, *, rel="CALLS")`** (`kg.py`) — Thin orchestrator-level wrapper around `GraphStore.callers_of()`.

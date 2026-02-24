@@ -1,23 +1,33 @@
-# Release Notes — v0.2.3
+# Release Notes — v0.3.0
 
 > Released: 2026-02-23
 
 ### Added
 
-- **`.claude/commands/codekg-rebuild.md`** — New `/codekg-rebuild` slash command that wipes and rebuilds the CodeKG SQLite knowledge graph and LanceDB semantic index for any repository. Guides the agent through path resolution, `--wipe` builds of both layers, verification, and a structured summary report.
-- **`docs/CHEATSHEET.md`** — Public-facing CodeKG query cheatsheet covering all four MCP tools (`graph_stats`, `query_codebase`, `pack_snippets`, `get_node`) with worked examples, data-flow query patterns, edge type reference table, parameter quick reference, and live codebase stats.
-- **`.claude/skills/codekg/references/CHEATSHEET.md`** — Skill-level copy of the cheatsheet, co-located with the CodeKG skill for agent-side reference.
-- **`README.md` — Caller Lookup section** — Documents bidirectional edge traversal in `expand()` for precise reverse call lookup.
-- **`README.md` — Development section** — Clone + `poetry install --extras mcp` + `pytest` workflow for contributors.
+- **`GraphStore.resolve_symbols()`** (`store.py`) — Post-build step that adds `RESOLVES_TO` edges from `sym:` stub nodes to their matching first-party definitions (`fn:`, `cls:`, `m:`, `mod:`) by name. Called automatically after `GraphStore.write()` in `CodeKG.build_graph()` and `codekg-build-sqlite`. Enables fan-in queries across module boundaries by connecting import-alias call sites to their canonical definition nodes. Idempotent.
+- **`GraphStore.callers_of(node_id, *, rel="CALLS")`** (`store.py`) — Two-phase reverse lookup (fan-in): returns direct incoming `rel` edges plus callers that reach the target through `sym:` stubs resolved via `RESOLVES_TO`. Returns deduplicated caller node dicts.
+- **`CodeKG.callers(node_id, *, rel="CALLS")`** (`kg.py`) — Thin orchestrator-level wrapper around `GraphStore.callers_of()`.
+- **`callers(node_id, rel)` MCP tool** (`mcp_server.py`) — New fifth tool exposing precise fan-in lookup to agents. Returns JSON with `node_id`, `rel`, `caller_count`, and `callers` list. Cross-module callers (those referencing the target via an import alias) are resolved automatically.
+- **`RESOLVES_TO` edge relation** — New graph edge type linking `sym:` stubs to in-repo definitions. Not emitted by the AST extractor; added by `resolve_symbols()` post-build.
+- **`article/code_kg.tex`** — LaTeX source for the technical paper "CodeKG: Deterministic Code Navigation via Knowledge Graphs, Semantic Indexing, and Grounded Context Packing". Covers the four-layer architecture, hybrid query model, fan-in lookup, and a detailed comparison with Microsoft GraphRAG (Structural KG-RAG).
+- **`article/code_kg_medium.md`** — Medium.com companion article "Your Codebase Has a Shape. Most Tools Can't See It." — an accessible overview of CodeKG's design, query model, and MCP integration.
+- **`article/logo.png`** — Project logo added to the `article/` directory alongside the paper assets.
 
 ### Changed
 
-- **`scripts/install-skill.sh`** — New Step 2 installs both Claude Code slash commands (`codekg.md`, `codekg-rebuild.md`) to `~/.claude/commands/`, copying from the local repo or downloading from GitHub. Subsequent steps renumbered (3→4 through 7→8). Final summary now reports installed commands. Variable renamed `LOCAL_CMD` → `_LOCAL_CMD` to avoid collision with the new loop variable.
-- **`README.md`** — `symbol` node description updated to mention the data-flow pass; `ATTR_ACCESS`, `READS`, and `WRITES` edge types added to the edges table; Phase 1 description expanded to cover the three sequential AST passes; embedding model updated to `jinaai/jina-embeddings-v3` in CLI examples; Installation section restructured (pip-first, Poetry simplified); MCP configuration section headings clarified; `visitor.py` added to file structure listing; redundant dev-workflow callouts removed.
+- **`build_codekg_sqlite.py`** — Now calls `store.resolve_symbols()` after `store.write()` and reports the resolved edge count in the output line (`resolved=N`).
+- **`docs/Architecture.md`** — Updated to document `RESOLVES_TO`, `resolve_symbols()`, `callers_of()`, `callers()`, the updated build pipeline data flow, and the new MCP tool.
+- **`docs/MCP.md`** — Added `callers` tool reference section, updated overview (4 → 5 tools), added fan-in step to the typical workflow, updated summary table.
+- **`.claude/skills/codekg/SKILL.md`** — Added `callers` to tools table and workflow; added `RESOLVES_TO` to rels reference.
+- **`README.md`** — Added `RESOLVES_TO` edge to the edges table; expanded "Caller Lookup" section to "Caller Lookup (Fan-In)" with two-phase lookup explanation and code examples; added symbol resolution as build pipeline step 4; added `callers(node_id)` to the MCP tools table; updated docs file structure listing.
 
 ### Removed
 
-- **`docs/code_kg.pdf`** — Legacy PDF removed; superseded by `docs/CHEATSHEET.md` and `docs/Architecture.md`.
+- **`docs/code_kg.pdf`** — Moved to `article/code_kg.pdf` alongside the paper source.
+
+### Fixed
+
+- **`SemanticIndex._open_table()` LanceDB wipe bug** (`index.py`) — When `wipe=True`, the table is now dropped and recreated instead of deleting rows from the existing table. Row deletion preserved the stale schema, causing an Arrow `ListType → FixedSizeListType` cast error on the first `tbl.add()` call after an embedding model change. Dropping the table ensures a clean schema on every wipe.
 
 ---
 

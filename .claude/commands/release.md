@@ -61,6 +61,18 @@ Do not summarise or rewrite the changelog content — copy it exactly.
 
 ---
 
+## Step 4b: Update Version Badge in README.md
+
+In `README.md`, find the version badge line:
+
+```
+[![Version](https://img.shields.io/badge/version-<current_version>-blue.svg)](https://github.com/Flux-Frontiers/code_kg/releases)
+```
+
+Replace `<current_version>` with `<new_version>` (e.g. `0.2.3` → `0.2.4`).
+
+---
+
 ## Step 5: Commit the Release Files
 
 1. Stage the following files:
@@ -68,6 +80,7 @@ Do not summarise or rewrite the changelog content — copy it exactly.
    - `release-notes.md`
    - `pyproject.toml`
    - `src/code_kg/__init__.py`
+   - `README.md`
 2. Create a commit with message:
    ```
    chore(release): v<new_version> release notes
