@@ -209,9 +209,6 @@ class SemanticIndex:
         nodes = self._read_nodes(store)
         tbl = self._open_table(wipe=wipe)
 
-        if wipe:
-            tbl.delete("id != ''")
-
         indexed = 0
         for i in range(0, len(nodes), batch_size):
             chunk = nodes[i : i + batch_size]
@@ -304,10 +301,10 @@ class SemanticIndex:
         db = lancedb.connect(str(self.lancedb_dir))  # type: ignore[attr-defined]
 
         if self.table_name in db.list_tables().tables:
-            tbl = db.open_table(self.table_name)
             if wipe:
-                tbl.delete("id != ''")
-            return tbl
+                db.drop_table(self.table_name)
+            else:
+                return db.open_table(self.table_name)
 
         # Create with a dummy row to establish schema, then remove it
         dummy = {

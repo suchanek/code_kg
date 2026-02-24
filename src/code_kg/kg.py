@@ -434,6 +434,7 @@ class CodeKG:
         """
         nodes, edges = self.graph.extract(force=wipe).result()
         self.store.write(nodes, edges, wipe=wipe)
+        self.store.resolve_symbols()
         s = self.store.stats()
         return BuildStats(
             repo_root=str(self.repo_root),
@@ -652,6 +653,21 @@ class CodeKG:
     # ------------------------------------------------------------------
     # Convenience
     # ------------------------------------------------------------------
+
+    def callers(self, node_id: str, *, rel: str = "CALLS") -> list[dict]:
+        """
+        Return all nodes that call *node_id*, resolving through ``sym:`` stubs.
+
+        This is a precise reverse lookup (fan-in) that works across module
+        boundaries.  It finds direct incoming *rel* edges as well as callers
+        that reference *node_id* via an import alias recorded as a ``sym:``
+        stub node.
+
+        :param node_id: Target node identifier (e.g. ``fn:src/foo.py:bar``).
+        :param rel: Relation type to invert (default ``"CALLS"``).
+        :return: Deduplicated list of caller node dicts.
+        """
+        return self.store.callers_of(node_id, rel=rel)
 
     def stats(self) -> dict:
         """Return store statistics (node/edge counts by kind/relation)."""

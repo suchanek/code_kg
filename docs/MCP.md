@@ -10,7 +10,7 @@
 
 CodeKG ships a built-in MCP server (`codekg-mcp`) that exposes the full hybrid query and snippet-pack pipeline as structured tools consumable by any MCP-compatible AI agent — Claude Code, Claude Desktop, Cursor, Continue, or any custom agent that speaks the Model Context Protocol.
 
-Once configured, the agent gains four tools:
+Once configured, the agent gains five tools:
 
 | Tool | Purpose |
 |---|---|
@@ -18,6 +18,7 @@ Once configured, the agent gains four tools:
 | `query_codebase(q)` | Semantic + structural graph exploration |
 | `pack_snippets(q)` | Source-grounded code snippets for implementation detail |
 | `get_node(node_id)` | Single node metadata lookup by stable ID |
+| `callers(node_id, rel)` | Precise fan-in lookup — find all callers of a node, resolving through sym: stubs |
 
 ---
 
@@ -701,6 +702,39 @@ Fetch a single node by its stable ID.
 
 ---
 
+### `callers(node_id, rel)`
+
+Find all callers of a specific node by inverting a relation — fan-in analysis.
+
+**When to use:** Finding all callers of a specific function/method/class — fan-in analysis. More precise than `query_codebase` for this use case because it resolves cross-module callers through `sym:` import stubs.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `node_id` | `str` | — | Stable node ID, e.g. `fn:src/auth/jwt.py:JWTValidator.validate` |
+| `rel` | `str` | `"CALLS"` | Relation type to invert |
+
+**Returns:** JSON with `node_id`, `rel`, `caller_count`, `callers` (list of node dicts).
+
+**Example return shape:**
+
+```json
+{
+  "node_id": "fn:src/code_kg/store.py:GraphStore.expand",
+  "rel": "CALLS",
+  "caller_count": 7,
+  "callers": [
+    { "id": "m:src/code_kg/kg.py:CodeKG.query", "kind": "method", ... },
+    ...
+  ]
+}
+```
+
+> **Note:** `sym:` nodes are resolved automatically — callers from other modules that import the target function are included even when they reference it via an alias.
+
+---
+
 ## 12. Query Strategy Guide
 
 ### Choosing `k` and `hop`
@@ -738,7 +772,10 @@ Higher `hop` values expand the result set geometrically. Use `max_nodes` in `pac
 4. get_node("fn:src/auth/jwt.py:JWTValidator.validate")
    → fetch metadata for a specific node
 
-5. pack_snippets("JWT token validation error handling", k=4, hop=2, rels="CALLS")
+5. callers("fn:src/auth/jwt.py:JWTValidator.validate")
+   → find every caller, including cross-module callers via import aliases
+
+6. pack_snippets("JWT token validation error handling", k=4, hop=2, rels="CALLS")
    → follow the call graph deeper into error paths
 ```
 
@@ -786,7 +823,7 @@ Add these to `.gitignore` to avoid committing large binary artifacts:
 
 | Concern | Answer |
 |---|---|
-| What does the MCP server expose? | 4 tools: `graph_stats`, `query_codebase`, `pack_snippets`, `get_node` |
+| What does the MCP server expose? | 5 tools: `graph_stats`, `query_codebase`, `pack_snippets`, `get_node`, `callers` |
 | What must exist before starting? | `.codekg/graph.sqlite` + `.codekg/lancedb/` directory |
 | How do I build those? | `codekg-build-sqlite` then `codekg-build-lancedb --sqlite ...` |
 | Is the server stateful? | Yes — one `CodeKG` instance per server process |

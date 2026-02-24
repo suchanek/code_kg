@@ -44,9 +44,10 @@ def main() -> None:
 
     store = GraphStore(Path(args.db))
     store.write(nodes, edges, wipe=args.wipe)
+    resolved = store.resolve_symbols()
     store.close()
 
-    print(f"OK: nodes={len(nodes)} edges={len(edges)} db={args.db}")
+    print(f"OK: nodes={len(nodes)} edges={len(edges)} resolved={resolved} db={args.db}")
 
 
 if __name__ == "__main__":

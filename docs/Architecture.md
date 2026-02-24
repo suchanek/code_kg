@@ -75,7 +75,9 @@ The locked v0 contract. Pure, deterministic, side-effect free.
 - **`extract_repo(repo_root)`** — walks all `.py` files, runs two AST passes (definitions + call graph), returns `(nodes, edges)`
 
 Node kinds: `module`, `class`, `function`, `method`, `symbol`
-Edge relations: `CONTAINS`, `CALLS`, `IMPORTS`, `INHERITS`
+Edge relations: `CONTAINS`, `CALLS`, `IMPORTS`, `INHERITS`, `RESOLVES_TO`
+
+`RESOLVES_TO` is not emitted by the AST extractor. It is added as a post-build step by `GraphStore.resolve_symbols()` and links `sym:` stub nodes to their matching first-party `fn:`, `cls:`, `m:`, and `mod:` definitions by name. See [Build Pipeline → Phase 1](#phase-1--static-analysis-ast--sqlite) for details.
 
 ### Layer 2 — `CodeGraph` (`graph.py`)
 
@@ -118,6 +120,8 @@ Key methods:
 | `query_nodes(kinds=, module=)` | Filtered node list |
 | `edges_within(node_ids)` | Edges with both endpoints in the set |
 | `expand(seed_ids, hop=1, rels=…)` | BFS expansion with `ProvMeta` provenance |
+| `resolve_symbols()` | Post-build step: adds `RESOLVES_TO` edges from `sym:` stubs to matching definitions; returns edge count added |
+| `callers_of(node_id, *, rel="CALLS")` | Two-phase reverse lookup (direct + via `sym:` stubs); returns deduplicated caller node dicts |
 | `stats()` | Node/edge counts by kind/relation |
 
 **`ProvMeta`** — returned by `expand()`:
@@ -189,10 +193,15 @@ result.print_summary()
 pack = kg.pack("configuration loading", k=8, hop=1)
 pack.save("context.md")          # or fmt="json"
 
+# Reverse lookup — who calls this function?
+callers = kg.callers("fn:src/foo.py:bar")
+
 # Convenience
 kg.stats()                       # store stats
 kg.node("fn:src/foo.py:bar")     # fetch node
 ```
+
+`callers(node_id, *, rel="CALLS")` is a thin wrapper around `GraphStore.callers_of()`. It performs a two-phase fan-in lookup — direct incoming `rel` edges plus callers that reach the target through `sym:` stubs resolved via `RESOLVES_TO` — and returns a deduplicated list of caller node dicts.
 
 Layer properties are lazy — the embedder and LanceDB connection are only created when first needed.
 
@@ -258,7 +267,7 @@ Methods: `to_dict()`, `to_json()`, `to_markdown()`, `save(path, fmt="md")`
 
 ### Phase 1 — Static Analysis (AST → SQLite)
 
-`CodeGraph.extract()` → `GraphStore.write()`
+`CodeGraph.extract()` → `GraphStore.write()` → `GraphStore.resolve_symbols()`
 
 - Walk all `.py` files (skipping `.venv`, `__pycache__`, `.git`, etc.)
 - **Pass 1**: extract modules, classes, functions, methods, imports, inheritance
@@ -266,6 +275,7 @@ Methods: `to_dict()`, `to_json()`, `to_markdown()`, `save(path, fmt="md")`
 - Generate stable, deterministic node IDs: `mod:`, `cls:`, `fn:`, `m:`, `sym:`
 - Emit edges with evidence (`lineno`, `expr`)
 - Persist to SQLite via upsert (idempotent)
+- **Symbol resolution**: `GraphStore.resolve_symbols()` is called automatically after `GraphStore.write()` in `CodeKG.build_graph()`. It name-matches every `sym:` stub against all first-party definitions and writes `RESOLVES_TO` edges, enabling fan-in queries (e.g. "who calls X?") to work correctly across module boundaries. The operation is idempotent.
 
 **No embeddings. No LLMs.**
 
@@ -407,6 +417,7 @@ poetry add mcp
 |---|---|
 | `query_codebase(q, k, hop, rels, include_symbols)` | Hybrid semantic + structural query; returns ranked nodes and edges as JSON |
 | `pack_snippets(q, k, hop, rels, include_symbols, context, max_lines, max_nodes)` | Hybrid query + source-grounded snippet extraction; returns Markdown |
+| `callers(node_id, rel)` | Precise reverse lookup (fan-in): returns JSON with `node_id`, `rel`, `caller_count`, and `callers` list; resolves cross-module callers via `sym:` stubs |
 | `get_node(node_id)` | Fetch a single node by its stable ID; returns JSON |
 | `graph_stats()` | Node and edge counts by kind/relation; returns JSON |
 
@@ -552,6 +563,10 @@ Repository (.py files)
   │ nodes table │
   │ edges table │
   └─────────────┘
+        │
+        ▼  GraphStore.resolve_symbols()
+  RESOLVES_TO edges        ← sym: stubs → fn:/cls:/m: definitions
+  (idempotent, post-build)
         │
         ▼  SemanticIndex.build()
   .codekg/lancedb/        ← derived, disposable

@@ -1,0 +1,41 @@
+feat(graph): add fan-in support via RESOLVES_TO edges and callers tool
+
+Problem: callers of imported functions were invisible to the graph.
+The AST visitor emits CALLS → sym:Foo for any call whose target can't
+be resolved at walk time (imported names, attribute accesses, etc.).
+This left fn:/cls: definition nodes with zero incoming CALLS edges
+from other modules — callers and definitions lived in disconnected
+subgraphs.
+
+Changes:
+
+  GraphStore.resolve_symbols() — post-build step that name-matches
+  every sym: stub against all first-party definitions and writes
+  RESOLVES_TO edges. Called automatically in codekg-build-sqlite and
+  CodeKG.build_graph(). Idempotent.
+
+  GraphStore.callers_of(node_id, *, rel="CALLS") — two-phase reverse
+  lookup: direct incoming rel edges + callers through sym: stubs via
+  RESOLVES_TO. Returns deduplicated caller node dicts.
+
+  CodeKG.callers() — orchestrator-level wrapper.
+
+  callers() MCP tool — fifth tool exposing precise fan-in to agents.
+  Returns JSON with node_id, rel, caller_count, callers list.
+
+  Fix SemanticIndex._open_table() wipe bug — was deleting rows but
+  keeping the stale schema, causing Arrow ListType→FixedSizeListType
+  cast errors after embedding model changes. Now drops and recreates
+  the table on wipe.
+
+  article/ — new directory with LaTeX technical paper (code_kg.tex),
+  Medium companion article (code_kg_medium.md), logo, and compiled PDF
+  (moved from docs/code_kg.pdf).
+
+  .pre-commit-config.yaml — extend check-added-large-files exclude
+  pattern to cover article/ in addition to docs/ so PNG/PDF assets
+  in the article directory are not flagged by the hook.
+
+Docs updated: Architecture.md, MCP.md, README.md, SKILL.md.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

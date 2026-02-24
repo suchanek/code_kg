@@ -132,7 +132,7 @@ class GraphStore:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._con = sqlite3.connect(
                 str(self.db_path),
-                check_same_thread=False,  # safe: GraphStore is read-heavy; writes are serialised by SQLite WAL
+                check_same_thread=False,  # safe: read-heavy; writes serialised by SQLite WAL
             )
             self._con.executescript(_SCHEMA_SQL)
         return self._con
@@ -385,6 +385,109 @@ class GraphStore:
             frontier = nxt
 
         return meta
+
+    # ------------------------------------------------------------------
+    # Symbol resolution
+    # ------------------------------------------------------------------
+
+    def resolve_symbols(self) -> int:
+        """
+        Add ``RESOLVES_TO`` edges from ``sym:`` stub nodes to their
+        first-party definitions (``fn:``, ``cls:``, ``m:``, ``mod:``).
+
+        The AST visitor emits ``CALLS → sym:Foo`` for any call whose target
+        cannot be resolved at walk time (imported names, attribute accesses,
+        etc.).  This post-build step links those stubs to the canonical
+        definition nodes by matching on the ``name`` field, making fan-in
+        queries (who calls X?) work correctly via graph traversal.
+
+        Matching is by name only, so a ``sym:close`` stub will acquire
+        ``RESOLVES_TO`` edges to *every* in-repo node named ``close``.
+        Agents can use the graph context to disambiguate.  The operation is
+        idempotent — duplicate edges are silently ignored.
+
+        :return: Number of new ``RESOLVES_TO`` edges written.
+        """
+        sym_rows = self.con.execute("SELECT id, name FROM nodes WHERE kind = 'symbol'").fetchall()
+
+        def_rows = self.con.execute(
+            "SELECT id, name FROM nodes WHERE kind != 'symbol' AND name IS NOT NULL"
+        ).fetchall()
+
+        name_to_defs: dict[str, list[str]] = {}
+        for def_id, def_name in def_rows:
+            name_to_defs.setdefault(def_name, []).append(def_id)
+
+        edges: list[tuple[str, str, str, None]] = []
+        for sym_id, sym_name in sym_rows:
+            if not sym_name:
+                continue
+            for def_id in name_to_defs.get(sym_name, []):
+                edges.append((sym_id, "RESOLVES_TO", def_id, None))
+
+        if edges:
+            self.con.executemany(
+                """
+                INSERT INTO edges (src, rel, dst, evidence)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(src, rel, dst) DO NOTHING
+                """,
+                edges,
+            )
+            self.con.commit()
+
+        return len(edges)
+
+    # ------------------------------------------------------------------
+    # Caller lookup (fan-in)
+    # ------------------------------------------------------------------
+
+    def callers_of(self, node_id: str, *, rel: str = "CALLS") -> list[dict]:
+        """
+        Return all nodes that have a *rel* edge pointing at *node_id*,
+        including cross-module callers that reference it via ``sym:`` stubs.
+
+        Two-phase lookup:
+
+        1. Direct: ``edges WHERE dst = node_id AND rel = rel``
+        2. Indirect: find all ``sym:`` stubs with a ``RESOLVES_TO`` edge to
+           *node_id*, then collect their incoming *rel* edges.
+
+        Caller nodes are deduplicated and returned as node dicts.
+
+        :param node_id: Target node identifier (e.g. ``fn:src/foo.py:bar``).
+        :param rel: Relation type to invert (default ``"CALLS"``).
+        :return: List of caller node dicts, deduplicated.
+        """
+        direct = self.con.execute(
+            "SELECT src FROM edges WHERE dst = ? AND rel = ?",
+            (node_id, rel),
+        ).fetchall()
+
+        stubs = self.con.execute(
+            "SELECT src FROM edges WHERE dst = ? AND rel = 'RESOLVES_TO'",
+            (node_id,),
+        ).fetchall()
+
+        stub_callers: list[tuple[str]] = []
+        for (stub_id,) in stubs:
+            rows = self.con.execute(
+                "SELECT src FROM edges WHERE dst = ? AND rel = ?",
+                (stub_id, rel),
+            ).fetchall()
+            stub_callers.extend(rows)
+
+        seen: set[str] = set()
+        result: list[dict] = []
+        for (caller_id,) in direct + stub_callers:
+            if caller_id in seen:
+                continue
+            seen.add(caller_id)
+            n = self.node(caller_id)
+            if n:
+                result.append(n)
+
+        return result
 
     # ------------------------------------------------------------------
     # Stats

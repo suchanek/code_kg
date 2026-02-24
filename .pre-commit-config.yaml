@@ -9,7 +9,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]
-        exclude: '^docs/.*\.(png|jpg|jpeg|gif|pdf)$'
+        exclude: '^(docs|article)/.*\.(png|jpg|jpeg|gif|pdf)$'
       - id: debug-statements
 
   - repo: local

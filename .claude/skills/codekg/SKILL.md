@@ -1,6 +1,6 @@
 ---
 name: codekg
-description: Expert knowledge for installing, configuring, and using the CodeKG MCP server — a hybrid semantic + structural knowledge graph for Python codebases. Use this skill when the user asks about: setting up CodeKG in a project, adding code-kg as a Poetry dependency, building the SQLite or LanceDB knowledge graph, configuring .mcp.json for Claude Code or Kilo Code, configuring .vscode/mcp.json for GitHub Copilot, configuring claude_desktop_config.json for Claude Desktop, configuring Cline MCP settings, using the codekg-mcp CLI, running codekg-build-sqlite or codekg-build-lancedb, using the graph_stats / query_codebase / pack_snippets / get_node MCP tools, or troubleshooting CodeKG errors.
+description: Expert knowledge for installing, configuring, and using the CodeKG MCP server — a hybrid semantic + structural knowledge graph for Python codebases. Use this skill when the user asks about: setting up CodeKG in a project, adding code-kg as a Poetry dependency, building the SQLite or LanceDB knowledge graph, configuring .mcp.json for Claude Code or Kilo Code, configuring .vscode/mcp.json for GitHub Copilot, configuring claude_desktop_config.json for Claude Desktop, configuring Cline MCP settings, using the codekg-mcp CLI, running codekg-build-sqlite or codekg-build-lancedb, using the graph_stats / query_codebase / pack_snippets / get_node / callers MCP tools, or troubleshooting CodeKG errors.
 ---
 
 # CodeKG Skill
@@ -177,6 +177,7 @@ This installs, builds, smoke-tests, and writes both config files automatically.
 | `query_codebase(q)` | Explore graph structure, find relevant nodes |
 | `pack_snippets(q)` | Read actual source code (prefer over query_codebase) |
 | `get_node(node_id)` | Fetch metadata for a specific node by ID |
+| `callers(node_id)` | Find all callers of a node — fan-in lookup resolving cross-module sym: stubs |
 
 ## Query Strategy Guide
 
@@ -197,6 +198,7 @@ This installs, builds, smoke-tests, and writes both config files automatically.
 | `CALLS` | Tracing execution flow |
 | `IMPORTS` | Dependency analysis |
 | `INHERITS` | OOP hierarchy |
+| `RESOLVES_TO` | Connecting `sym:` stubs to definitions | Used internally by `callers()` — include in `query_codebase` rels for graph traversal through import aliases |
 
 ### Typical session workflow
 
@@ -205,7 +207,8 @@ This installs, builds, smoke-tests, and writes both config files automatically.
 2. query_codebase("auth flow", k=8, hop=1)          → find nodes
 3. pack_snippets("JWT validation", k=6, hop=1)      → read source
 4. get_node("fn:src/auth/jwt.py:JWTValidator.validate")  → node detail
-5. pack_snippets("error handling", k=4, hop=2, rels="CALLS")  → deeper
+5. callers("fn:src/auth/jwt.py:JWTValidator.validate")   → all callers, cross-module included
+6. pack_snippets("error handling", k=4, hop=2, rels="CALLS")  → deeper
 ```
 
 ## Key Defaults

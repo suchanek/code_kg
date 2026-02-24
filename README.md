@@ -73,15 +73,16 @@ Each node stores a stable deterministic `id`, `kind`, `name`, `qualname`, `modul
 
 Edges encode semantic relationships between nodes:
 
-| Relation      | Meaning                                                   |
-|---------------|-----------------------------------------------------------|
-| `CONTAINS`    | Module → class/function                                   |
-| `CALLS`       | Function/method → function/method                         |
-| `IMPORTS`     | Module → module/symbol                                    |
-| `INHERITS`    | Class → base class                                        |
-| `ATTR_ACCESS` | Variable/symbol → accessed attribute (`obj.attr`)         |
-| `READS`       | Variable read at an assignment right-hand side or call site |
-| `WRITES`      | Variable written at an assignment target                  |
+| Relation       | Meaning                                                   |
+|----------------|-----------------------------------------------------------|
+| `CONTAINS`     | Module → class/function                                   |
+| `CALLS`        | Function/method → function/method                         |
+| `IMPORTS`      | Module → module/symbol                                    |
+| `INHERITS`     | Class → base class                                        |
+| `RESOLVES_TO`  | `sym:` stub → first-party definition (post-build, enables cross-module fan-in) |
+| `ATTR_ACCESS`  | Variable/symbol → accessed attribute (`obj.attr`)         |
+| `READS`        | Variable read at an assignment right-hand side or call site |
+| `WRITES`       | Variable written at an assignment target                  |
 
 Edges may carry **evidence** (e.g., source line number and expression text), enabling call-site extraction and precise auditability:
 
@@ -105,6 +106,8 @@ The repository is parsed using Python's `ast` module in three sequential passes 
 3. **Pass 3 — Data-flow** — `CodeKGVisitor` walks each AST to emit `READS`, `WRITES`, and `ATTR_ACCESS` edges at the variable and attribute level. New `symbol` nodes are merged non-destructively alongside the structural nodes from Passes 1 and 2.
 
 **Output:** a single SQLite database (`.codekg/graph.sqlite`) with `nodes` and `edges` tables.
+
+4. **Post-build — Symbol resolution** — `resolve_symbols()` name-matches every `sym:` stub (imported/attribute-accessed call targets) against all first-party definitions and writes `RESOLVES_TO` edges, connecting callers in other modules to the function definitions they invoke. This step is idempotent and runs automatically after each build.
 
 > This phase uses **no embeddings and no LLMs**.
 
@@ -148,9 +151,25 @@ For retained nodes, CodeKG extracts **source-grounded definition snippets** usin
 
 ---
 
-## Caller Lookup
+## Caller Lookup (Fan-In)
 
-Because `expand()` traverses edges in both directions, any node can be queried as either a caller or a callee. Given a function node, following `CALLS` edges inward returns all functions that invoke it — a precise, source-grounded reverse call lookup with no text search heuristics.
+CodeKG provides precise fan-in lookup via the `callers()` API and `callers` MCP tool. A naive reverse traversal of `CALLS` edges fails for imported functions: the AST visitor emits `CALLS → sym:Foo` stubs for calls whose targets cannot be resolved at walk time (imported names, attribute accesses), leaving the `fn:` definition nodes with zero incoming cross-module edges.
+
+The `RESOLVES_TO` post-build step bridges this gap by name-matching every `sym:` stub to its first-party definition. The two-phase `callers_of()` lookup then combines:
+
+1. **Direct reverse** — nodes with `CALLS → target` edges
+2. **Stub reverse** — nodes with `CALLS → sym:Foo` where `sym:Foo RESOLVES_TO target`
+
+Results are deduplicated and returned as node dicts. The `callers` MCP tool exposes this directly to agents:
+
+```python
+# Python API
+callers = kg.callers("fn:src/auth/jwt.py:JWTValidator.validate")
+
+# MCP tool
+callers("fn:src/auth/jwt.py:JWTValidator.validate")
+# → {"node_id": ..., "caller_count": 7, "callers": [...]}
+```
 
 ---
 
@@ -168,6 +187,8 @@ Repository
 AST parsing — Pass 1: structure, Pass 2: calls, Pass 3: data-flow  (codekg.py + visitor.py)
   ↓
 SQLite graph — nodes + edges  (build_codekg_sqlite.py)
+  ↓
+Symbol resolution — RESOLVES_TO edges (sym: stubs → fn:/cls: defs)  (store.py)
   ↓
 Vector indexing — LanceDB  (build_codekg_lancedb.py)
   ↓
@@ -372,6 +393,7 @@ poetry install --extras mcp
 | `pack_snippets(q, ...)` | Hybrid query + source-grounded snippet extraction; returns Markdown |
 | `get_node(node_id)` | Fetch a single node by its stable ID |
 | `graph_stats()` | Node and edge counts by kind/relation |
+| `callers(node_id)` | Precise fan-in lookup resolving cross-module `sym:` stubs via `RESOLVES_TO` edges |
 
 ### Automated setup
 
@@ -480,11 +502,9 @@ code_kg/
 ├── pyproject.toml
 ├── docs/
 │   ├── Architecture.md
-│   ├── code_kg_medium.md
+│   ├── CHEATSHEET.md
+│   ├── code_kg.pdf
 │   ├── code_kg_workflow.md
-│   ├── code_kg.aux
-│   ├── code_kg.md
-│   ├── code_kg.tex
 │   ├── deployment.md
 │   ├── MCP.md
 │   └── logo.png

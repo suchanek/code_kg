@@ -190,6 +190,43 @@ def pack_snippets(
 
 
 @mcp.tool()
+def callers(node_id: str, rel: str = "CALLS") -> str:
+    """
+    Return all nodes that call a given node, resolving through ``sym:`` stubs.
+
+    Unlike ``query_codebase`` (which seeds on semantics and expands outward),
+    this tool performs a precise reverse lookup: it finds every caller of the
+    specified node, including cross-module callers that reference it via an
+    import alias recorded as a ``sym:`` stub.
+
+    Typical workflow::
+
+        # 1. Resolve the exact node ID
+        get_node("fn:src/my_pkg/utils.py:helper")
+
+        # 2. Find all callers
+        callers("fn:src/my_pkg/utils.py:helper")
+
+    :param node_id: Target node identifier, e.g.
+                    ``fn:src/code_kg/store.py:GraphStore.expand``.
+    :param rel: Relation type to invert (default ``"CALLS"``).
+    :return: JSON with ``node_id``, ``rel``, ``caller_count``, and
+             ``callers`` list of node dicts.
+    """
+    caller_list = _get_kg().callers(node_id, rel=rel)
+    return json.dumps(
+        {
+            "node_id": node_id,
+            "rel": rel,
+            "caller_count": len(caller_list),
+            "callers": caller_list,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
 def get_node(node_id: str) -> str:
     """
     Fetch a single node by its stable ID.
