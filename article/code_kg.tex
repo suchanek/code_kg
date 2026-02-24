@@ -10,6 +10,7 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{microtype}
 \usepackage{cite}
 \setlist{noitemsep, topsep=3pt, partopsep=0pt}
 
@@ -256,7 +257,7 @@ primary user-facing API:
 \item \texttt{build(wipe=False)} --- full pipeline: AST extraction, SQLite
 persistence, symbol resolution, LanceDB indexing.
 \item \texttt{build\_graph(wipe=False)} --- AST extraction, SQLite persistence,
-and symbol resolution\allowbreak\ (\texttt{resolve\_symbols()} is called automatically).
+and symbol resolution; \texttt{resolve\_symbols()} is called automatically.
 \item \texttt{build\_index(wipe=False)} --- LanceDB indexing only (graph must
 already exist).
 \item \texttt{query(q, k=8, hop=1, \ldots)} --- hybrid query returning a
@@ -432,7 +433,7 @@ query result with source snippets attached to each node. Provides
 \section{MCP Server}
 
 \texttt{mcp\_server.py} wraps \texttt{CodeKG} as a Model Context Protocol server,
-exposing four tools to any MCP-compatible AI agent:
+exposing five tools to any MCP-compatible AI agent:
 
 \begin{itemize}
 \item \texttt{graph\_stats()} --- node and edge counts by kind and relation.
@@ -441,6 +442,8 @@ returning JSON.
 \item \texttt{pack\_snippets(q, k, hop, rels, \ldots)} --- hybrid query with
 source-grounded snippets returning Markdown.
 \item \texttt{get\_node(node\_id)} --- single node metadata lookup by stable ID.
+\item \texttt{callers(node\_id, rel)} --- fan-in lookup returning all callers of a
+given node, including cross-module callers resolved through \texttt{sym:} stubs.
 \end{itemize}
 
 The server is started via the \texttt{codekg-mcp} CLI entry point and communicates
@@ -617,7 +620,7 @@ workflow. Systems that use an LLM to construct the knowledge substrate introduce
 probabilistic error at the foundation, which propagates unchecked into every
 downstream reasoning step. CodeKG inverts this: the structural substrate is built
 from a deterministic formal process, and the LLM is positioned where it is most
-effective---synthesising and explaining a context pack whose every line is verified
+effective---synthesizing and explaining a context pack whose every line is verified
 against the source. The result is a form of Structural KG-RAG that combines the
 navigability of natural-language queries with the correctness guarantees of static
 analysis.

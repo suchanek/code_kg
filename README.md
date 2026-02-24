@@ -16,7 +16,7 @@ with Semantic Indexing and Source-Grounded Snippet Packing
 
 *Flux-Frontiers, Liberty TWP, OH*
 
-[Technical Paper (PDF)](docs/code_kg.pdf)
+[Technical Paper (PDF)](article/code_kg.pdf)
 
 ---
 
