@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`scripts/rebuild-codekg.sh`** — Pre-commit hook script that rebuilds the SQLite knowledge graph and LanceDB semantic index after tests pass, keeping `.codekg/` artifacts current on every commit.
+- **`codekg-rebuild` pre-commit hook** (`.pre-commit-config.yaml`) — Runs `scripts/rebuild-codekg.sh` after `ruff-format`; ensures the shipped `.codekg/` index always reflects the committed source.
+- **`docs/analysis_v0.3.1.md`** — Versioned CodeKG architecture analysis (complexity hotspots, call chains, module coupling, orphaned code) stamped with v0.3.1.
+- **Step 4c in `/release` workflow** (`.claude/commands/release.md`) — Rebuilds the index, runs `codekg-analyze`, writes `docs/analysis_v<version>.md`, and re-stages `.codekg/` artifacts as part of every release.
+- **Cline MCP settings support** (`scripts/install-skill.sh`) — Installer now writes a repo-keyed entry (`codekg-<repo-name>`) to Cline's global `cline_mcp_settings.json` and installs `setup-mcp.md` as a Claude command.
+
+### Changed
+
+- **`CodeKG.__init__`** (`kg.py`) — `db_path` and `lancedb_dir` are now optional; both default to `<repo_root>/.codekg/graph.sqlite` and `<repo_root>/.codekg/lancedb`. Existing callers that pass explicit paths continue to work unchanged.
+- **All CLI commands and MCP configs** (`codekg-rebuild.md`, `setup-mcp.md`, `install-skill.sh`, `README.md`) — Simplified to `--repo`-only invocation; `--db`, `--sqlite`, and `--lancedb` flags are now optional everywhere.
+- **`.gitignore`** — Removed `.codekg/` so the pre-built knowledge graph and vector index are committed with the repo, enabling zero-setup MCP after cloning.
+- **`README.md`** — Updated all CLI examples to reflect optional flags; added manual Cline setup instructions with repo-keyed server naming; simplified `.mcp.json` examples to use `poetry run`.
+
+### Added
+
 - **`_default_report_name()`** (`codekg_thorough_analysis.py`) — Helper that derives a timestamped markdown filename (`<repo>_analysis_<YYYYMMDD>.md`) from the resolved repo root, used as the automatic output name when `--output` is not supplied.
 - **`codekg-analyze` — zero-argument invocation** (`codekg_thorough_analysis.py`) — `repo_root` is now optional (defaults to `"."`); `db_path` and `lancedb_path` default to `.codekg/graph.sqlite` and `.codekg/lancedb` respectively, matching the standard project layout.
 - **`codekg-analyze --output`/`-o`** — Writes the markdown analysis report to the specified path (auto-named when omitted).

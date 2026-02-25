@@ -118,6 +118,7 @@ SKILL_DIRS=(
 CLAUDE_COMMAND_FILES=(
     "codekg.md"
     "codekg-rebuild.md"
+    "setup-mcp.md"
 )
 
 # ── Detect if we're running from inside the repo ─────────────────────────────
@@ -337,6 +338,71 @@ if [ -z "$PYTHON_BIN" ]; then
     fi
 fi
 
+# ── Step 4b: Write Cline MCP settings (cline_mcp_settings.json) ─────────────
+# Must run after PYTHON_BIN is resolved above.
+echo ""
+echo "── Step 4b: Configuring Cline MCP settings ──────────"
+echo ""
+
+if [ "$DO_CLINE" = "1" ]; then
+    # Cline global MCP settings — macOS/Linux paths
+    CLINE_SETTINGS=""
+    if [ -f "${HOME}/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]; then
+        CLINE_SETTINGS="${HOME}/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+    elif [ -f "${HOME}/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]; then
+        CLINE_SETTINGS="${HOME}/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+    fi
+
+    if [ -z "$CLINE_SETTINGS" ]; then
+        echo "  ⚠ cline_mcp_settings.json not found — is Cline installed?"
+        echo "    Expected: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"
+    elif [ -n "$DRY_RUN" ]; then
+        REPO_NAME="$(basename "${TARGET_REPO}")"
+        echo "  [dry-run] would upsert codekg-${REPO_NAME} in ${CLINE_SETTINGS}"
+    else
+        # Derive codekg-mcp binary path from PYTHON_BIN
+        PYTHON_BIN_DIR="$(dirname "${PYTHON_BIN}")"
+        CODEKG_MCP_BIN="${PYTHON_BIN_DIR}/codekg-mcp"
+        if [ ! -x "$CODEKG_MCP_BIN" ]; then
+            CODEKG_MCP_BIN="$PYTHON_BIN"
+        fi
+
+        REPO_NAME="$(basename "${TARGET_REPO}")"
+        python3 - "$CLINE_SETTINGS" "$TARGET_REPO" "$CODEKG_MCP_BIN" "$PYTHON_BIN" "$REPO_NAME" <<'PYEOF'
+import json, sys, os
+cline_settings = sys.argv[1]
+target_repo    = sys.argv[2]
+mcp_bin        = sys.argv[3]
+python_bin     = sys.argv[4]
+repo_name      = sys.argv[5]
+server_key     = f"codekg-{repo_name}"
+
+with open(cline_settings, "r") as f:
+    data = json.load(f)
+if "mcpServers" not in data:
+    data["mcpServers"] = {}
+
+if os.path.basename(mcp_bin) == "codekg-mcp":
+    data["mcpServers"][server_key] = {
+        "command": mcp_bin,
+        "args": ["--repo", target_repo]
+    }
+else:
+    data["mcpServers"][server_key] = {
+        "command": mcp_bin,
+        "args": ["-m", "code_kg", "mcp", "--repo", target_repo]
+    }
+
+with open(cline_settings, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+print(f"  ✓ Upserted {server_key} in {cline_settings}")
+PYEOF
+    fi
+else
+    echo "  – Skipped (cline not selected)"
+fi
+
 # ── Step 4: Build the SQLite knowledge graph ──────────────────────────────────
 echo ""
 echo "── Step 5: Building SQLite knowledge graph ──────────"
@@ -350,11 +416,11 @@ else
         _exec rm -f "$SQLITE_DB"
     fi
     if [ -n "$DRY_RUN" ]; then
-        echo "  [dry-run] would run: python -m code_kg build-sqlite --repo ${TARGET_REPO} --db ${SQLITE_DB}"
+        echo "  [dry-run] would run: python -m code_kg build-sqlite --repo ${TARGET_REPO}"
     else
         _exec mkdir -p "$(dirname "$SQLITE_DB")"
         echo "  → Building SQLite graph at: ${SQLITE_DB}"
-        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-sqlite --repo "${TARGET_REPO}" --db "${SQLITE_DB}")
+        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-sqlite --repo "${TARGET_REPO}")
         if [ -f "$SQLITE_DB" ]; then
             NODE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM nodes;" 2>/dev/null || echo "?")
             EDGE_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM edges;" 2>/dev/null || echo "?")
@@ -379,10 +445,10 @@ else
         _exec rm -rf "$LANCEDB_DIR"
     fi
     if [ -n "$DRY_RUN" ]; then
-        echo "  [dry-run] would run: python -m code_kg build-lancedb --sqlite ${SQLITE_DB} --lancedb ${LANCEDB_DIR}"
+        echo "  [dry-run] would run: python -m code_kg build-lancedb --repo ${TARGET_REPO}"
     else
         echo "  → Building LanceDB index at: ${LANCEDB_DIR}"
-        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-lancedb --sqlite "${SQLITE_DB}" --lancedb "${LANCEDB_DIR}")
+        (cd "${TARGET_REPO}" && "${PYTHON_BIN}" -m code_kg build-lancedb --repo "${TARGET_REPO}")
         if [ -d "$LANCEDB_DIR" ] && [ "$(ls -A "$LANCEDB_DIR" 2>/dev/null)" ]; then
             echo "  ✓ Built: ${LANCEDB_DIR}"
         else
@@ -415,12 +481,7 @@ elif [ ! -f "$MCP_JSON" ]; then
       "command": "${PYTHON_BIN}",
       "args": [
         "-m", "code_kg", "mcp",
-        "--repo",
-        "${TARGET_REPO}",
-        "--db",
-        "${SQLITE_DB}",
-        "--lancedb",
-        "${LANCEDB_DIR}"
+        "--repo", "${TARGET_REPO}"
       ]
     }
   }
@@ -428,20 +489,18 @@ elif [ ! -f "$MCP_JSON" ]; then
 EOF
     echo "  ✓ Created ${MCP_JSON}"
 else
-    python3 - "$MCP_JSON" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
+    python3 - "$MCP_JSON" "$TARGET_REPO" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
 mcp_json_path = sys.argv[1]
 target_repo   = sys.argv[2]
-sqlite_db     = sys.argv[3]
-lancedb_dir   = sys.argv[4]
-python_bin    = sys.argv[5]
+python_bin    = sys.argv[3]
 with open(mcp_json_path, "r") as f:
     data = json.load(f)
 if "mcpServers" not in data:
     data["mcpServers"] = {}
 data["mcpServers"]["codekg"] = {
     "command": python_bin,
-    "args": ["-m", "code_kg", "mcp", "--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
+    "args": ["-m", "code_kg", "mcp", "--repo", target_repo]
 }
 with open(mcp_json_path, "w") as f:
     json.dump(data, f, indent=2)
@@ -478,12 +537,7 @@ else
       "command": "${PYTHON_BIN}",
       "args": [
         "-m", "code_kg", "mcp",
-        "--repo",
-        "${TARGET_REPO}",
-        "--db",
-        "${SQLITE_DB}",
-        "--lancedb",
-        "${LANCEDB_DIR}"
+        "--repo", "${TARGET_REPO}"
       ]
     }
   }
@@ -491,13 +545,11 @@ else
 EOF
         echo "  ✓ Created ${VSCODE_MCP}"
     else
-        python3 - "$VSCODE_MCP" "$TARGET_REPO" "$SQLITE_DB" "$LANCEDB_DIR" "$PYTHON_BIN" <<'PYEOF'
+        python3 - "$VSCODE_MCP" "$TARGET_REPO" "$PYTHON_BIN" <<'PYEOF'
 import json, sys
 vscode_mcp  = sys.argv[1]
 target_repo = sys.argv[2]
-sqlite_db   = sys.argv[3]
-lancedb_dir = sys.argv[4]
-python_bin  = sys.argv[5]
+python_bin  = sys.argv[3]
 with open(vscode_mcp, "r") as f:
     data = json.load(f)
 if "servers" not in data:
@@ -505,7 +557,7 @@ if "servers" not in data:
 data["servers"]["codekg"] = {
     "type": "stdio",
     "command": python_bin,
-    "args": ["-m", "code_kg", "mcp", "--repo", target_repo, "--db", sqlite_db, "--lancedb", lancedb_dir]
+    "args": ["-m", "code_kg", "mcp", "--repo", target_repo]
 }
 with open(vscode_mcp, "w") as f:
     json.dump(data, f, indent=2)
@@ -534,12 +586,13 @@ echo ""
 echo "  Claude commands installed:"
 echo "    ✓ ~/.claude/commands/codekg.md"
 echo "    ✓ ~/.claude/commands/codekg-rebuild.md"
+echo "    ✓ ~/.claude/commands/setup-mcp.md"
 echo ""
 echo "  Providers configured:"
 [ "$DO_CLAUDE"  = "1" ] && echo "    ✓ Claude Code    (.mcp.json)"
 [ "$DO_KILO"    = "1" ] && echo "    ✓ Kilo Code      (.mcp.json)"
 [ "$DO_COPILOT" = "1" ] && echo "    ✓ GitHub Copilot (.vscode/mcp.json)"
-[ "$DO_CLINE"   = "1" ] && echo "    ✓ Cline          (.claude/commands/codekg.md)"
+[ "$DO_CLINE"   = "1" ] && echo "    ✓ Cline          (.claude/commands/codekg.md + cline_mcp_settings.json)"
 echo ""
 echo "  ⚠ One manual step required:"
 echo "    Reload VS Code to activate the MCP servers:"

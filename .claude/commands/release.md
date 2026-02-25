@@ -73,6 +73,37 @@ Replace `<current_version>` with `<new_version>` (e.g. `0.2.3` → `0.2.4`).
 
 ---
 
+## Step 4c: Generate Versioned CodeKG Analysis
+
+1. Rebuild the CodeKG index against the current source:
+   ```bash
+   poetry run codekg-build-sqlite --repo . --wipe
+   poetry run codekg-build-lancedb --repo . --wipe
+   ```
+2. Run the thorough analysis:
+   ```bash
+   poetry run codekg-analyze --repo . --output docs/analysis_v<new_version>.md
+   ```
+   If the `--output` flag is not available, run the analysis and write stdout to the file:
+   ```bash
+   poetry run codekg-analyze --repo . > docs/analysis_v<new_version>.md
+   ```
+3. Open `docs/analysis_v<new_version>.md` and ensure the header contains:
+   ```
+   **Version:** <new_version>
+   **Generated:** <today's date in YYYY-MM-DD>
+   ```
+   Add or update these fields if missing.
+4. Delete any previous `docs/analysis_v<old_version>.md` file if it exists and differs from the new version.
+5. Stage the generated artifacts — the rebuild and analysis both produce new files:
+   ```bash
+   git add docs/analysis_v<new_version>.md
+   git add .codekg/
+   ```
+   If an old analysis file was deleted, also run `git rm docs/analysis_v<old_version>.md`.
+
+---
+
 ## Step 5: Commit the Release Files
 
 1. Stage the following files:
@@ -81,6 +112,7 @@ Replace `<current_version>` with `<new_version>` (e.g. `0.2.3` → `0.2.4`).
    - `pyproject.toml`
    - `src/code_kg/__init__.py`
    - `README.md`
+   - `docs/analysis_v<new_version>.md`
 2. Create a commit with message:
    ```
    chore(release): v<new_version> release notes
@@ -125,6 +157,7 @@ After all steps succeed, print a summary:
 ✓ CHANGELOG.md promoted [Unreleased] → [<new_version>] - <date>
 ✓ release-notes.md written
 ✓ pyproject.toml + __init__.py bumped to <new_version>
+✓ docs/analysis_v<new_version>.md generated
 ✓ Commit created
 ✓ Tag v<new_version> created
 ✓ Tag pushed to origin   (or: tag ready to push manually)

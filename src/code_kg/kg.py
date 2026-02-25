@@ -321,11 +321,7 @@ class CodeKG:
 
     Typical usage::
 
-        kg = CodeKG(
-            repo_root="/path/to/repo",
-            db_path=".codekg/graph.sqlite",
-            lancedb_dir=".codekg/lancedb",
-        )
+        kg = CodeKG(repo_root="/path/to/repo")
         stats = kg.build(wipe=True)
         print(stats)
 
@@ -345,8 +341,8 @@ class CodeKG:
     def __init__(
         self,
         repo_root: str | Path,
-        db_path: str | Path,
-        lancedb_dir: str | Path,
+        db_path: str | Path | None = None,
+        lancedb_dir: str | Path | None = None,
         *,
         model: str = DEFAULT_MODEL,
         table: str = "codekg_nodes",
@@ -355,14 +351,20 @@ class CodeKG:
         Initialise ``CodeKG`` and resolve all paths.
 
         :param repo_root: Repository root directory; resolved to an absolute path.
-        :param db_path: Path to the SQLite database file.
-        :param lancedb_dir: Directory used by LanceDB for the vector index.
+        :param db_path: Path to the SQLite database file. Defaults to
+            ``<repo_root>/.codekg/graph.sqlite``.
+        :param lancedb_dir: Directory used by LanceDB for the vector index. Defaults to
+            ``<repo_root>/.codekg/lancedb``.
         :param model: Sentence-transformer model name used for embedding.
         :param table: LanceDB table name for the node index.
         """
         self.repo_root = Path(repo_root).resolve()
-        self.db_path = Path(db_path)
-        self.lancedb_dir = Path(lancedb_dir)
+        self.db_path = (
+            Path(db_path) if db_path is not None else self.repo_root / ".codekg" / "graph.sqlite"
+        )
+        self.lancedb_dir = (
+            Path(lancedb_dir) if lancedb_dir is not None else self.repo_root / ".codekg" / "lancedb"
+        )
         self.model_name = model
         self.table_name = table
 

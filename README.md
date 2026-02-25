@@ -225,9 +225,10 @@ poetry add --group dev 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/cod
 All CLI entry points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, `codekg-analyze`, etc.) are available immediately via `poetry run` — no changes to your own `pyproject.toml` required:
 
 ```bash
-poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
-poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
-poetry run codekg-mcp --repo . --db .codekg/graph.sqlite --lancedb .codekg/lancedb
+# --db and --lancedb default to .codekg/graph.sqlite and .codekg/lancedb — flags are optional
+poetry run codekg-build-sqlite  --repo . --db .codekg/graph.sqlite
+poetry run codekg-build-lancedb --repo . --lancedb .codekg/lancedb
+poetry run codekg-mcp           --repo .
 ```
 
 ---
@@ -243,12 +244,14 @@ curl -fsSL https://raw.githubusercontent.com/Flux-Frontiers/code_kg/main/scripts
 The installer sets up the full **AI integration layer** end-to-end:
 
 1. Installs `SKILL.md` reference files for Claude Code, Kilo Code, and other agents
-2. Installs the `/codekg` slash command for Cline
-3. Installs the `code-kg` package if not already present — prefers the latest GitHub release wheel (`pip install 'code-kg[mcp] @ <wheel-url>'`), falls back to `pip install 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'`
-4. Builds the SQLite knowledge graph (`.codekg/graph.sqlite`) and LanceDB semantic index
-5. Writes MCP configuration for each provider:
-   - `.mcp.json` — Claude Code and Kilo Code
-   - `.vscode/mcp.json` — GitHub Copilot
+2. Installs Claude Code slash commands (`/codekg`, `/codekg-rebuild`, `/setup-mcp`) to `~/.claude/commands/`
+3. Installs the `/codekg` slash command into the target repo's `.claude/commands/` for Cline
+4. Installs the `code-kg` package if not already present — prefers the latest GitHub release wheel (`pip install 'code-kg[mcp] @ <wheel-url>'`), falls back to `pip install 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'`
+5. Builds the SQLite knowledge graph (`.codekg/graph.sqlite`) and LanceDB semantic index
+6. Writes MCP configuration for each provider:
+   - `.mcp.json` — Claude Code and Kilo Code (per-repo)
+   - `.vscode/mcp.json` — GitHub Copilot (per-repo)
+   - `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` — Cline (global, keyed as `codekg-<repo-name>`)
 
 By default all providers are configured. Pass `--providers` to target specific ones, or `--dry-run` to preview what the script would do without making any changes:
 
@@ -279,17 +282,23 @@ python -m code_kg --help
 
 ### 1. Build the SQLite knowledge graph
 
+> `--db` defaults to `.codekg/graph.sqlite` — the flag is optional when running from the repo root.
+
 ```bash
 python -m code_kg build-sqlite --repo /path/to/repo --db .codekg/graph.sqlite [--wipe]
 ```
 
 ### 2. Build the LanceDB semantic index
 
+> `--sqlite` and `--lancedb` default to `.codekg/graph.sqlite` and `.codekg/lancedb` — flags are optional when running from the repo root.
+
 ```bash
 python -m code_kg build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb [--model all-MiniLM-L6-v2] [--wipe]
 ```
 
 ### 3. Run a hybrid query
+
+> `--sqlite` and `--lancedb` default to `.codekg/graph.sqlite` and `.codekg/lancedb` — flags are optional when running from the repo root.
 
 ```bash
 python -m code_kg query \
@@ -334,6 +343,8 @@ python -m code_kg viz [--db .codekg/graph.sqlite] [--port 8500]
 ```
 
 ### 6. Start the MCP server
+
+> `--db` and `--lancedb` default to `.codekg/graph.sqlite` and `.codekg/lancedb` — flags are optional when running from the repo root.
 
 ```bash
 python -m code_kg mcp \
@@ -387,11 +398,10 @@ CodeKG ships a built-in **Model Context Protocol (MCP) server** that exposes the
 Build the knowledge graph first (the MCP server is read-only):
 
 ```bash
+# --db / --sqlite / --lancedb default to .codekg/ — flags are optional
 poetry run codekg-build-sqlite  --repo /path/to/repo --db .codekg/graph.sqlite
-poetry run codekg-build-lancedb --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
+poetry run codekg-build-lancedb --repo /path/to/repo --sqlite .codekg/graph.sqlite --lancedb .codekg/lancedb
 ```
-
-> **Note:** `codekg-build-lancedb` uses `--sqlite`, not `--db`.
 
 Install the optional `mcp` dependency:
 
@@ -423,6 +433,32 @@ This skill verifies installation, builds the graph and index, smoke-tests the pi
 
 See [`docs/MCP.md`](docs/MCP.md) for the full MCP reference including tool schemas, query strategy guide, and troubleshooting.
 
+### Cline (manual)
+
+Cline does not support per-repo MCP config. The installer writes a uniquely-keyed entry to Cline's **global** settings file so you can toggle repos on/off from the Cline MCP panel:
+
+**macOS:** `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+**Linux:** `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+
+Add an entry keyed as `codekg-<repo-name>` to avoid conflicts with other repos:
+
+```json
+{
+  "mcpServers": {
+    "codekg-my-repo": {
+      "command": "/absolute/path/to/venv/bin/codekg-mcp",
+      "args": ["--repo", "/absolute/path/to/repo"]
+    }
+  }
+}
+```
+
+Get the venv path with `poetry env info --path` (for Poetry projects) — the binary is at `<venv>/bin/codekg-mcp`.
+
+> ⚠️ Do **not** add a `codekg` entry without a repo-specific suffix — global settings are shared across all VS Code windows, so a single hardcoded path would conflict when working on multiple repos.
+
+The installer also places a `/codekg` slash command in the target repo's `.claude/commands/codekg.md`, which Cline reads as a project-level command.
+
 ### Claude Desktop (manual)
 
 Add a `codekg` entry to `claude_desktop_config.json`
@@ -432,12 +468,8 @@ Add a `codekg` entry to `claude_desktop_config.json`
 {
   "mcpServers": {
     "codekg": {
-      "command": "codekg-mcp",
-      "args": [
-        "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
-        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
-      ]
+      "command": "/absolute/path/to/venv/bin/codekg-mcp",
+      "args": ["--repo", "/absolute/path/to/repo"]
     }
   }
 }
@@ -447,18 +479,15 @@ Use **absolute paths** — Claude Desktop does not inherit your shell's working 
 
 ### Claude Code / Kilo Code — `.mcp.json` (manual)
 
-Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Point `command` directly at the `codekg-mcp` binary inside the virtual environment:
+Both Claude Code and Kilo Code read per-repo config from `.mcp.json`. Use `poetry run` so the entry point resolves regardless of venv path:
 
 ```json
 {
   "mcpServers": {
     "codekg": {
-      "command": "/absolute/path/to/.venv/bin/codekg-mcp",
-      "args": [
-        "--repo",    "/absolute/path/to/repo",
-        "--db",      "/absolute/path/to/repo/.codekg/graph.sqlite",
-        "--lancedb", "/absolute/path/to/repo/.codekg/lancedb"
-      ]
+      "command": "poetry",
+      "args": ["run", "codekg-mcp", "--repo", "/absolute/path/to/repo"],
+      "env": { "POETRY_VIRTUALENVS_IN_PROJECT": "false" }
     }
   }
 }

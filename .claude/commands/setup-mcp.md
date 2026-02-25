@@ -23,9 +23,11 @@ This command accepts an optional repository path argument:
    ```
 4. If no Python files are found, stop and report the issue.
 
-Derive artifact paths from `REPO_ROOT`:
+All artifact paths use the defaults relative to `REPO_ROOT`:
 - `DB_PATH` → `$REPO_ROOT/.codekg/graph.sqlite`
 - `LANCEDB_DIR` → `$REPO_ROOT/.codekg/lancedb`
+
+Do not pass `--db` or `--lancedb` flags — the commands default to `.codekg/` automatically.
 
 ---
 
@@ -64,20 +66,20 @@ The package is managed via Poetry, so all checks use `poetry run`.
 
 1. Check whether `DB_PATH` already exists:
    ```bash
-   ls -lh "$DB_PATH" 2>/dev/null
+   ls -lh "$REPO_ROOT/.codekg/graph.sqlite" 2>/dev/null
    ```
 2. If it exists, ask the user:
-   > "A knowledge graph already exists at `$DB_PATH`. Rebuild it from scratch (wipe), or keep the existing graph?"
+   > "A knowledge graph already exists at `$REPO_ROOT/.codekg/graph.sqlite`. Rebuild it from scratch (wipe), or keep the existing graph?"
    - **Wipe**: proceed with `--wipe`
    - **Keep**: skip to Step 3
 
 3. Run the static analysis build:
    ```bash
-   poetry run codekg-build-sqlite --repo "$REPO_ROOT" --db "$DB_PATH" --wipe
+   poetry run codekg-build-sqlite --repo "$REPO_ROOT" --wipe
    ```
 4. Verify the database was created and is non-empty:
    ```bash
-   sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
+   sqlite3 "$REPO_ROOT/.codekg/graph.sqlite" "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
    ```
 5. Report the node and edge counts. If both are zero, warn the user — the repo may have no indexable Python files.
 
@@ -87,16 +89,16 @@ The package is managed via Poetry, so all checks use `poetry run`.
 
 1. Check whether `LANCEDB_DIR` already exists and is non-empty:
    ```bash
-   ls "$LANCEDB_DIR" 2>/dev/null
+   ls "$REPO_ROOT/.codekg/lancedb" 2>/dev/null
    ```
 2. If it exists and the user chose to keep the SQLite graph (Step 2), ask:
-   > "A vector index already exists at `$LANCEDB_DIR`. Rebuild it?"
+   > "A vector index already exists at `$REPO_ROOT/.codekg/lancedb`. Rebuild it?"
    - **Yes**: proceed with `--wipe`
    - **No**: skip to Step 4
 
 3. Run the embedding build:
    ```bash
-   poetry run codekg-build-lancedb --sqlite "$DB_PATH" --lancedb "$LANCEDB_DIR" --wipe
+   poetry run codekg-build-lancedb --repo "$REPO_ROOT" --wipe
    ```
 4. Confirm the LanceDB directory was populated:
    ```bash
@@ -114,14 +116,14 @@ Run a quick end-to-end test to confirm the full pipeline works before configurin
    ```bash
    poetry run python -c "
    from code_kg import CodeKG
-   kg = CodeKG(repo_root='$REPO_ROOT', db_path='$DB_PATH', lancedb_dir='$LANCEDB_DIR')
+   kg = CodeKG(repo_root='$REPO_ROOT')
    import json; print(json.dumps(kg.stats(), indent=2))
    "
    ```
 
-2. Run a sample query (note: flag is `--sqlite`, not `--db`):
+2. Run a sample query (must be run from `$REPO_ROOT` so `.codekg/` defaults resolve):
    ```bash
-   poetry run codekg-query --sqlite "$DB_PATH" --lancedb "$LANCEDB_DIR" --q "module structure"
+   cd "$REPO_ROOT" && poetry run codekg-query --q "module structure"
    ```
 
 3. If either command errors, diagnose and report the issue before proceeding.
@@ -173,9 +175,7 @@ GitHub Copilot in VS Code reads MCP servers from `.vscode/mcp.json` in the works
          "command": "poetry",
          "args": [
            "run", "codekg-mcp",
-           "--repo",    "<REPO_ROOT>",
-           "--db",      "<DB_PATH>",
-           "--lancedb", "<LANCEDB_DIR>"
+           "--repo", "<REPO_ROOT>"
          ],
          "env": {
            "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -207,9 +207,7 @@ Both Kilo Code and Claude Code read MCP servers from `.mcp.json` in the project 
      "command": "poetry",
      "args": [
        "run", "codekg-mcp",
-       "--repo",    "<REPO_ROOT>",
-       "--db",      "<DB_PATH>",
-       "--lancedb", "<LANCEDB_DIR>"
+       "--repo", "<REPO_ROOT>"
      ],
      "env": {
        "POETRY_VIRTUALENVS_IN_PROJECT": "false"
@@ -252,9 +250,7 @@ Claude Desktop does not have Poetry on its PATH, so use the absolute path to the
    "codekg": {
      "command": "<venv_path>/bin/codekg-mcp",
      "args": [
-       "--repo",    "<REPO_ROOT>",
-       "--db",      "<DB_PATH>",
-       "--lancedb", "<LANCEDB_DIR>"
+       "--repo", "<REPO_ROOT>"
      ]
    }
    ```
@@ -318,8 +314,8 @@ Present a summary of everything that was done:
 
 ```
 ✓ Repository indexed:   <REPO_ROOT>
-✓ SQLite graph:         <DB_PATH>  (<N> nodes, <M> edges)
-✓ LanceDB index:        <LANCEDB_DIR>  (<V> vectors)
+✓ SQLite graph:         <REPO_ROOT>/.codekg/graph.sqlite  (<N> nodes, <M> edges)
+✓ LanceDB index:        <REPO_ROOT>/.codekg/lancedb  (<V> vectors)
 ✓ Smoke test:           passed
 ✓ Claude Code config:   <REPO_ROOT>/.mcp.json
 ✓ Claude Desktop config: <CONFIG_PATH>
@@ -356,8 +352,8 @@ When the target codebase changes, the graph must be rebuilt. Remind the user:
 
 ```bash
 # Rebuild both artifacts (idempotent — safe to re-run)
-poetry run codekg-build-sqlite  --repo "$REPO_ROOT" --db "$DB_PATH" --wipe
-poetry run codekg-build-lancedb --sqlite "$DB_PATH" --lancedb "$LANCEDB_DIR" --wipe
+poetry run codekg-build-sqlite  --repo "$REPO_ROOT" --wipe
+poetry run codekg-build-lancedb --repo "$REPO_ROOT" --wipe
 ```
 
 The MCP client configs do not need to change — they point to the same file paths.

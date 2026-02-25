@@ -22,9 +22,7 @@ Wipe and rebuild the CodeKG SQLite knowledge graph and LanceDB semantic index fo
    ```
 3. If no Python files are found, stop and report the issue.
 
-Derive artifact paths:
-- `DB_PATH` → `$REPO_ROOT/.codekg/graph.sqlite`
-- `LANCEDB_DIR` → `$REPO_ROOT/.codekg/lancedb`
+All artifact paths default to `$REPO_ROOT/.codekg/` — do not pass `--db`, `--sqlite`, or `--lancedb` flags.
 
 Detect how to invoke CodeKG — try in order:
 1. `poetry run codekg-build-sqlite` (preferred if inside a Poetry project)
@@ -40,15 +38,15 @@ Run the static analysis build with `--wipe` to replace any existing graph:
 
 ```bash
 # Poetry
-poetry run codekg-build-sqlite --repo "$REPO_ROOT" --db "$DB_PATH" --wipe
+poetry run codekg-build-sqlite --repo "$REPO_ROOT" --wipe
 
 # pip / venv
-python -m code_kg build-sqlite --repo "$REPO_ROOT" --db "$DB_PATH" --wipe
+python -m code_kg build-sqlite --repo "$REPO_ROOT" --wipe
 ```
 
 Verify the database was created and is non-empty:
 ```bash
-sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
+sqlite3 "$REPO_ROOT/.codekg/graph.sqlite" "SELECT COUNT(*) FROM nodes; SELECT COUNT(*) FROM edges;"
 ```
 
 Capture and report node and edge counts broken down by kind. If both are zero, warn the user — the repo may have no indexable Python files.
@@ -57,19 +55,19 @@ Capture and report node and edge counts broken down by kind. If both are zero, w
 
 ## Step 2: Rebuild the LanceDB Semantic Index
 
-Run the embedding build with `--wipe`. Note: the input flag is `--sqlite`, not `--db`:
+Run the embedding build with `--wipe`:
 
 ```bash
 # Poetry
-poetry run codekg-build-lancedb --sqlite "$DB_PATH" --lancedb "$LANCEDB_DIR" --wipe
+poetry run codekg-build-lancedb --repo "$REPO_ROOT" --wipe
 
 # pip / venv
-python -m code_kg build-lancedb --sqlite "$DB_PATH" --lancedb "$LANCEDB_DIR" --wipe
+python -m code_kg build-lancedb --repo "$REPO_ROOT" --wipe
 ```
 
 Confirm the LanceDB directory was populated:
 ```bash
-ls -lh "$LANCEDB_DIR"
+ls -lh "$REPO_ROOT/.codekg/lancedb"
 ```
 
 Capture the number of indexed vectors from the command output.
@@ -84,14 +82,14 @@ Run a quick stats check to confirm both layers are consistent:
 # Poetry
 poetry run python -c "
 from code_kg import CodeKG; import json
-kg = CodeKG(repo_root='$REPO_ROOT', db_path='$DB_PATH', lancedb_dir='$LANCEDB_DIR')
+kg = CodeKG(repo_root='$REPO_ROOT')
 print(json.dumps(kg.stats(), indent=2))
 "
 
 # pip / venv
 python -c "
 from code_kg import CodeKG; import json
-kg = CodeKG(repo_root='$REPO_ROOT', db_path='$DB_PATH', lancedb_dir='$LANCEDB_DIR')
+kg = CodeKG(repo_root='$REPO_ROOT')
 print(json.dumps(kg.stats(), indent=2))
 "
 ```
@@ -106,8 +104,8 @@ Present a summary:
 
 ```
 ✓ Repository:    <REPO_ROOT>
-✓ SQLite graph:  <DB_PATH>  (<N> nodes, <M> edges)
-✓ LanceDB index: <LANCEDB_DIR>  (<V> vectors)
+✓ SQLite graph:  <REPO_ROOT>/.codekg/graph.sqlite  (<N> nodes, <M> edges)
+✓ LanceDB index: <REPO_ROOT>/.codekg/lancedb  (<V> vectors)
 
 Node breakdown:  module=X  class=X  function=X  method=X  symbol=X
 Edge breakdown:  CONTAINS=X  CALLS=X  IMPORTS=X  INHERITS=X  ATTR_ACCESS=X
@@ -120,7 +118,7 @@ Note: MCP client configs do not need to change — they reference the same paths
 ## Important Rules
 
 - Always pass `--wipe` to both build steps — the rebuild is intentional and idempotent.
-- `codekg-build-lancedb` takes `--sqlite` for its input path, not `--db`.
-- Use absolute paths for `--repo`, `--db`, and `--lancedb`.
+- Only pass `--repo` — all other paths default to `.codekg/` automatically.
+- Use an absolute path for `--repo`.
 - Do NOT modify any source files in the target repository.
 - If the repo is large (>50k lines of Python), warn that the embedding step may take several minutes.

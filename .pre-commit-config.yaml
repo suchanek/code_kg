@@ -9,7 +9,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]
-        exclude: '^(docs|article)/.*\.(png|jpg|jpeg|gif|pdf)$'
+        exclude: '^(docs|article)/.*\.(png|jpg|jpeg|gif|pdf)$|^\.codekg/'
       - id: debug-statements
 
   - repo: local
@@ -39,3 +39,12 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: codekg-rebuild
+        name: codekg-rebuild
+        entry: scripts/rebuild-codekg.sh
+        language: script
+        pass_filenames: false
+        always_run: true
