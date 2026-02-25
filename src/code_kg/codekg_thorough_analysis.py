@@ -965,15 +965,18 @@ def main(repo_root: str, db_path: str, lancedb_path: str) -> None:
         raise
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """CLI entry point for the codekg-analyze script."""
     import sys
 
     if len(sys.argv) < 4:
-        print("Usage: python codekg_thorough_analysis.py <repo_root> <db_path> <lancedb_path>")
+        print("Usage: codekg-analyze <repo_root> <db_path> <lancedb_path>")
         print("\nExample:")
-        print(
-            "  python codekg_thorough_analysis.py /path/to/repo .codekg/graph.sqlite .codekg/lancedb"
-        )
+        print("  codekg-analyze /path/to/repo .codekg/graph.sqlite .codekg/lancedb")
         sys.exit(1)
 
     main(sys.argv[1], sys.argv[2], sys.argv[3])
+
+
+if __name__ == "__main__":
+    cli()

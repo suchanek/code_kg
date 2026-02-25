@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "code-kg"
-version = "0.3.0"
+version = "0.3.1"
 description = "A tool to build a searchable knowledge graph from Python repositories"
 authors = ["Eric G. Suchanek, PhD <suchanek@mac.com>"]
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -54,6 +54,7 @@ codekg-query         = "code_kg.codekg_query:main"
 codekg-pack          = "code_kg.codekg_snippet_packer:main"
 codekg-viz           = "code_kg.codekg_viz:main"
 codekg-mcp           = "code_kg.mcp_server:main"
+codekg-analyze       = "code_kg.codekg_thorough_analysis:cli"
 
 [tool.ruff]
 line-length = 100

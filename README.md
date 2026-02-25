@@ -1,7 +1,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/)
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic%202.0-blue.svg)](https://www.elastic.co/licensing/elastic-license)
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Flux-Frontiers/code_kg/releases)
+[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/Flux-Frontiers/code_kg/releases)
 [![CI](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml/badge.svg)](https://github.com/Flux-Frontiers/code_kg/actions/workflows/ci.yml)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 
@@ -222,7 +222,7 @@ Add `code-kg` as a dev dependency from GitHub:
 poetry add --group dev 'code-kg[mcp] @ git+https://github.com/Flux-Frontiers/code_kg.git'
 ```
 
-All CLI entry points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, etc.) are available immediately via `poetry run` — no changes to your own `pyproject.toml` required:
+All CLI entry points (`codekg-mcp`, `codekg-build-sqlite`, `codekg-build-lancedb`, `codekg-analyze`, etc.) are available immediately via `poetry run` — no changes to your own `pyproject.toml` required:
 
 ```bash
 poetry run codekg-build-sqlite --repo . --db .codekg/graph.sqlite
@@ -340,6 +340,20 @@ python -m code_kg mcp \
   --repo    /path/to/repo \
   --db      /path/to/repo/.codekg/graph.sqlite \
   --lancedb /path/to/repo/.codekg/lancedb
+```
+
+### 7. Run a thorough codebase analysis
+
+Performs a comprehensive structural and semantic analysis of the knowledge graph and saves results to `~/.claude/codekg_analysis_latest.json`:
+
+```bash
+codekg-analyze /path/to/repo .codekg/graph.sqlite .codekg/lancedb
+```
+
+Or via `poetry run`:
+
+```bash
+poetry run codekg-analyze /path/to/repo .codekg/graph.sqlite .codekg/lancedb
 ```
 
 ---
@@ -528,6 +542,7 @@ code_kg/
 │       ├── codekg.py
 │       ├── codekg_query.py
 │       ├── codekg_snippet_packer.py
+│       ├── codekg_thorough_analysis.py
 │       ├── codekg_viz.py
 │       ├── graph.py
 │       ├── index.py
