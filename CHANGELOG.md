@@ -9,11 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`scripts/rebuild-codekg.sh`** — Pre-commit hook script that rebuilds the SQLite knowledge graph and LanceDB semantic index after tests pass, keeping `.codekg/` artifacts current on every commit.
-- **`codekg-rebuild` pre-commit hook** (`.pre-commit-config.yaml`) — Runs `scripts/rebuild-codekg.sh` after `ruff-format`; ensures the shipped `.codekg/` index always reflects the committed source.
+### Changed
+
+### Removed
+
+### Fixed
+
+---
+
+## [0.3.2] - 2026-02-25
+
+### Added
+
+- **`scripts/rebuild-codekg.sh`** — Script to rebuild the SQLite knowledge graph and LanceDB semantic index on demand (invoked manually or via `/codekg-rebuild`).
 - **`docs/analysis_v0.3.1.md`** — Versioned CodeKG architecture analysis (complexity hotspots, call chains, module coupling, orphaned code) stamped with v0.3.1.
 - **Step 4c in `/release` workflow** (`.claude/commands/release.md`) — Rebuilds the index, runs `codekg-analyze`, writes `docs/analysis_v<version>.md`, and re-stages `.codekg/` artifacts as part of every release.
 - **Cline MCP settings support** (`scripts/install-skill.sh`) — Installer now writes a repo-keyed entry (`codekg-<repo-name>`) to Cline's global `cline_mcp_settings.json` and installs `setup-mcp.md` as a Claude command.
+
+### Fixed
+
+- **Removed `codekg-rebuild` pre-commit hook** (`.pre-commit-config.yaml`) — The hook generated new `.codekg/` artifacts on every commit attempt, causing a dirty-working-tree loop. Rebuild is now a manual step via `scripts/rebuild-codekg.sh` or `/codekg-rebuild`.
+- **`.codekg/` WAL files cleaned up** — Stale `graph.sqlite-shm` and `graph.sqlite-wal` write-ahead log files removed from the committed index.
 
 ### Changed
 

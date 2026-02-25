@@ -39,12 +39,3 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-
-  - repo: local
-    hooks:
-      - id: codekg-rebuild
-        name: codekg-rebuild
-        entry: scripts/rebuild-codekg.sh
-        language: script
-        pass_filenames: false
-        always_run: true
