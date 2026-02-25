@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`_default_report_name()`** (`codekg_thorough_analysis.py`) — Helper that derives a timestamped markdown filename (`<repo>_analysis_<YYYYMMDD>.md`) from the resolved repo root, used as the automatic output name when `--output` is not supplied.
+- **`codekg-analyze` — zero-argument invocation** (`codekg_thorough_analysis.py`) — `repo_root` is now optional (defaults to `"."`); `db_path` and `lancedb_path` default to `.codekg/graph.sqlite` and `.codekg/lancedb` respectively, matching the standard project layout.
+- **`codekg-analyze --output`/`-o`** — Writes the markdown analysis report to the specified path (auto-named when omitted).
+- **`codekg-analyze --json`/`-j`** — Overrides the JSON snapshot output path (default: `~/.claude/codekg_analysis_latest.json`).
+- **`codekg-analyze --quiet`/`-q`** — Suppresses the Rich console summary table, useful in CI or scripted contexts.
+- **DB existence pre-flight check** (`codekg_thorough_analysis.py`) — `main()` now warns and exits early when the SQLite database file is not found, rather than raising a cryptic import or file error.
+- **Startup path summary** (`codekg_thorough_analysis.py`) — `main()` prints the resolved repo, DB, LanceDB, and report paths before analysis begins for easier debugging.
+
 ### Changed
+
+- **`cli()` upgraded to `argparse`** (`codekg_thorough_analysis.py`) — Replaced the manual `sys.argv` parser with `argparse.ArgumentParser` (using `ArgumentDefaultsHelpFormatter`), adding `--help` support and the new `--db`, `--lancedb`, `--output`, `--json`, and `--quiet` flags.
+- **`main()` signature** (`codekg_thorough_analysis.py`) — All positional parameters are now keyword-only with sensible defaults; added `json_path` and `quiet`; JSON output variable renamed `output_file` → `json_out`.
 
 ### Removed
 

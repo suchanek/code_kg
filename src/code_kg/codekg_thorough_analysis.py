@@ -925,57 +925,150 @@ Functions with zero callers (potential dead code):
             self.console.print()
 
 
-def main(repo_root: str, db_path: str, lancedb_path: str) -> None:
+def _default_report_name(repo_root: Path) -> str:
+    """Derive a timestamped default markdown report filename.
+
+    :param repo_root: Repository root directory
+    :return: Filename string like ``myrepo_analysis_20260224.md``
+    """
+    repo_name = repo_root.resolve().name
+    date_str = datetime.now().strftime("%Y%m%d")
+    return f"{repo_name}_analysis_{date_str}.md"
+
+
+def main(
+    repo_root: str = ".",
+    db_path: str | None = None,
+    lancedb_path: str | None = None,
+    report_path: str | None = None,
+    json_path: str | None = None,
+    quiet: bool = False,
+) -> None:
     """Main entry point.
 
-    :param repo_root: Root directory of the repository to analyze
-    :param db_path: Path to the SQLite knowledge graph database
-    :param lancedb_path: Path to the LanceDB vector index directory
+    Paths for ``db_path`` and ``lancedb_path`` default to the standard
+    ``.codekg/`` layout inside ``repo_root`` when not provided.
+    The markdown report defaults to ``<repo>_analysis_<YYYYMMDD>.md``
+    in the current working directory.  The JSON snapshot always writes
+    to ``~/.claude/codekg_analysis_latest.json`` unless overridden.
+
+    :param repo_root: Root directory of the repository (default: ``"."``)
+    :param db_path: Path to SQLite knowledge graph; default ``.codekg/graph.sqlite``
+    :param lancedb_path: Path to LanceDB vector index; default ``.codekg/lancedb``
+    :param report_path: Markdown report output path; auto-named when ``None``
+    :param json_path: JSON snapshot output path; defaults to ``~/.claude/codekg_analysis_latest.json``
+    :param quiet: Suppress console summary table when ``True``
     """
     console = Console()
+    root = Path(repo_root).resolve()
+    db = Path(db_path) if db_path else root / ".codekg" / "graph.sqlite"
+    lancedb = Path(lancedb_path) if lancedb_path else root / ".codekg" / "lancedb"
+    md_out = report_path or _default_report_name(root)
+    json_out = (
+        Path(json_path) if json_path else Path.home() / ".claude" / "codekg_analysis_latest.json"
+    )
+
+    if not db.exists():
+        console.print(
+            f"[yellow]⚠[/yellow]  Database not found at [dim]{db}[/dim]\n"
+            "Run [bold]codekg-build-sqlite[/bold] first."
+        )
 
     try:
         from code_kg import CodeKG
 
-        console.print("[dim]Initializing CodeKG...[/dim]")
-        kg = CodeKG(
-            repo_root=Path(repo_root),
-            db_path=Path(db_path),
-            lancedb_dir=Path(lancedb_path),
-        )
+        console.print(f"[dim]Repo   : {root}[/dim]")
+        console.print(f"[dim]DB     : {db}[/dim]")
+        console.print(f"[dim]LanceDB: {lancedb}[/dim]")
+        console.print(f"[dim]Report : {md_out}[/dim]")
+        console.print()
+
+        kg = CodeKG(repo_root=root, db_path=db, lancedb_dir=lancedb)
 
         analyzer = CodeKGAnalyzer(kg, console)
-        results = analyzer.run_analysis()
-        analyzer.print_summary()
+        results = analyzer.run_analysis(report_path=md_out)
 
-        # Save results
-        output_file = Path.home() / ".claude" / "codekg_analysis_latest.json"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(json.dumps(results, indent=2))
+        if not quiet:
+            analyzer.print_summary()
 
-        console.print(f"[dim]Results saved to {output_file}[/dim]")
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(results, indent=2))
+        console.print(f"[dim]JSON   : {json_out}[/dim]")
 
     except ImportError as e:
         console.print(
             f"[red]Error: Could not import CodeKG[/red]\n"
             f"Details: {e}\n\n"
-            f"Make sure you are in the code_kg package environment."
+            "Make sure you are running inside the code_kg package environment."
         )
         logger.exception("Import error")
         raise
 
 
 def cli() -> None:
-    """CLI entry point for the codekg-analyze script."""
-    import sys
+    """CLI entry point for the ``codekg-analyze`` script."""
+    import argparse
 
-    if len(sys.argv) < 4:
-        print("Usage: codekg-analyze <repo_root> <db_path> <lancedb_path>")
-        print("\nExample:")
-        print("  codekg-analyze /path/to/repo .codekg/graph.sqlite .codekg/lancedb")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        prog="codekg-analyze",
+        description="Thorough architectural analysis of a Python repository using CodeKG.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    # --- inputs ---
+    parser.add_argument(
+        "repo_root",
+        nargs="?",
+        default=".",
+        help="Repository root directory to analyze",
+    )
+    parser.add_argument(
+        "--db",
+        default=None,
+        metavar="PATH",
+        help="SQLite knowledge graph path (default: <repo>/.codekg/graph.sqlite)",
+    )
+    parser.add_argument(
+        "--lancedb",
+        default=None,
+        metavar="PATH",
+        help="LanceDB vector index directory (default: <repo>/.codekg/lancedb)",
+    )
+
+    # --- outputs ---
+    parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        metavar="PATH",
+        help="Markdown report output path (default: <repo>_analysis_<YYYYMMDD>.md)",
+    )
+    parser.add_argument(
+        "--json",
+        "-j",
+        default=None,
+        metavar="PATH",
+        dest="json_path",
+        help="JSON snapshot output path (default: ~/.claude/codekg_analysis_latest.json)",
+    )
+
+    # --- behaviour ---
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress the Rich console summary table",
+    )
+
+    args = parser.parse_args()
+    main(
+        repo_root=args.repo_root,
+        db_path=args.db,
+        lancedb_path=args.lancedb,
+        report_path=args.output,
+        json_path=args.json_path,
+        quiet=args.quiet,
+    )
 
 
 if __name__ == "__main__":
