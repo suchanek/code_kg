@@ -1,0 +1,333 @@
+{
+  "timestamp": "2026-02-26T00:31:38.852360+00:00",
+  "statistics": {
+    "db_path": ".codekg/graph.sqlite",
+    "total_nodes": 3607,
+    "total_edges": 4078,
+    "node_counts": {
+      "class": 21,
+      "function": 214,
+      "method": 98,
+      "module": 22,
+      "symbol": 3252
+    },
+    "edge_counts": {
+      "ATTR_ACCESS": 1156,
+      "CALLS": 1302,
+      "CONTAINS": 333,
+      "IMPORTS": 171,
+      "INHERITS": 4,
+      "RESOLVES_TO": 1112
+    }
+  },
+  "function_metrics": {
+    "fn:tests/test_primitives.py:_parse_expr": {
+      "node_id": "fn:tests/test_primitives.py:_parse_expr",
+      "name": "_parse_expr",
+      "module": "tests/test_primitives.py",
+      "kind": "function",
+      "fan_in": 6,
+      "fan_out": 0,
+      "lines": 1,
+      "docstring": null,
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer.print_summary": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer.print_summary",
+      "name": "print_summary",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 4,
+      "fan_out": 0,
+      "lines": 56,
+      "docstring": "Print analysis summary to console.",
+      "risk_level": "low"
+    },
+    "cls:src/code_kg/codekg_thorough_analysis.py:FunctionMetrics": {
+      "node_id": "cls:src/code_kg/codekg_thorough_analysis.py:FunctionMetrics",
+      "name": "FunctionMetrics",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "class",
+      "fan_in": 3,
+      "fan_out": 0,
+      "lines": 22,
+      "docstring": "Metrics for a single function or class.\n\n:param node_id: Stable node identifier\n:param name: Function/class name\n:param module: Module path containing this definition\n:param kind: Kind of node (function, method, class)\n:param fan_in: Count of callers (how many call this)\n:param fan_out: Count of callees (how many this calls)\n:param lines: Approximate line count\n:param docstring: Docstring text if available\n:param risk_level: Risk assessment (low, medium, high, critical)",
+      "risk_level": "low"
+    },
+    "cls:src/code_kg/codekg_thorough_analysis.py:CallChain": {
+      "node_id": "cls:src/code_kg/codekg_thorough_analysis.py:CallChain",
+      "name": "CallChain",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "class",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 10,
+      "docstring": "Represents a critical path of function calls.\n\n:param chain: List of function names in call order\n:param depth: Length of the chain\n:param total_callers: Sum of all callers in chain",
+      "risk_level": "low"
+    },
+    "fn:src/code_kg/codekg_snippet_packer.py:main": {
+      "node_id": "fn:src/code_kg/codekg_snippet_packer.py:main",
+      "name": "main",
+      "module": "src/code_kg/codekg_snippet_packer.py",
+      "kind": "function",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 93,
+      "docstring": "Parse arguments, run a hybrid query, pack ranked snippets, and output results.\n\nBuilds a CodeKG instance, issues a hybrid semantic + graph query, assembles\na source-grounded snippet pack, then writes it to stdout or to a file\ndepending on the ``--out`` argument.",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_dependencies": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_dependencies",
+      "name": "_analyze_dependencies",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 54,
+      "docstring": "Phase 4: Analyze module-level dependencies.\n\nDetects orphaned functions (zero callers), import cycles,\nand tight coupling patterns.",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_fan_in": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_fan_in",
+      "name": "_analyze_fan_in",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 73,
+      "docstring": "Phase 2: Find most-called functions (fan-in).\n\nQueries for functions and methods, then uses callers() to get\nexact caller counts. Identifies bottlenecks and core functionality.",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_fan_out": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._analyze_fan_out",
+      "name": "_analyze_fan_out",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 94,
+      "docstring": "Phase 3: Find functions that call many others (fan-out).\n\nAnalyzes functions in the function_metrics already identified,\ncomputing their actual fan-out by reverse-querying callee lists.\nAlso identifies additional high-fanout orchestrator functions.",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._compile_results": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._compile_results",
+      "name": "_compile_results",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 16,
+      "docstring": "Compile analysis results into a dictionary.\n\n:return: dictionary with all analysis data",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._identify_public_apis": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer._identify_public_apis",
+      "name": "_identify_public_apis",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 22,
+      "docstring": "Phase 8: Identify public APIs (module-level exports).\n\nFunctions/classes at module level with high fan-in are likely\npublic APIs. Also identifies single-caller functions (utilities).",
+      "risk_level": "low"
+    },
+    "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer.run_analysis": {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer.run_analysis",
+      "name": "run_analysis",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 1,
+      "fan_out": 0,
+      "lines": 43,
+      "docstring": "Run complete multi-phase analysis.\n\n:param report_path: Optional path to write markdown report\n:return: dictionary of analysis results",
+      "risk_level": "low"
+    },
+    "fn:tests/test_kg.py:test_codekg_embedder_property_lazy_init": {
+      "node_id": "fn:tests/test_kg.py:test_codekg_embedder_property_lazy_init",
+      "name": "test_codekg_embedder_property_lazy_init",
+      "module": "tests/test_kg.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 9,
+      "docstring": null,
+      "risk_level": "low"
+    },
+    "fn:tests/test_kg.py:test_codekg_index_property_lazy_init": {
+      "node_id": "fn:tests/test_kg.py:test_codekg_index_property_lazy_init",
+      "name": "test_codekg_index_property_lazy_init",
+      "module": "tests/test_kg.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 7,
+      "docstring": null,
+      "risk_level": "low"
+    },
+    "fn:tests/test_kg.py:test_codekg_node_method": {
+      "node_id": "fn:tests/test_kg.py:test_codekg_node_method",
+      "name": "test_codekg_node_method",
+      "module": "tests/test_kg.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 7,
+      "docstring": null,
+      "risk_level": "low"
+    },
+    "fn:tests/test_kg.py:test_codekg_pack_returns_snippet_pack": {
+      "node_id": "fn:tests/test_kg.py:test_codekg_pack_returns_snippet_pack",
+      "name": "test_codekg_pack_returns_snippet_pack",
+      "module": "tests/test_kg.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 28,
+      "docstring": null,
+      "risk_level": "low"
+    }
+  },
+  "module_metrics": {
+    "src/code_kg/codekg_snippet_packer.py": {
+      "path": "src/code_kg/codekg_snippet_packer.py",
+      "functions": 0,
+      "classes": 0,
+      "methods": 0,
+      "incoming_deps": [],
+      "outgoing_deps": [
+        "src/code_kg/kg.py",
+        "src/code_kg/visitor.py",
+        "tests/test_kg.py",
+        "src/code_kg/codekg.py"
+      ],
+      "total_fan_in": 0,
+      "cohesion_score": 0.8888888888888888
+    }
+  },
+  "orphaned_functions": [
+    {
+      "node_id": "fn:src/code_kg/codekg_thorough_analysis.py:cli",
+      "name": "cli",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 69,
+      "docstring": null,
+      "risk_level": "high"
+    },
+    {
+      "node_id": "fn:tests/test_kg.py:test_codekg_embedder_property_lazy_init",
+      "name": "test_codekg_embedder_property_lazy_init",
+      "module": "tests/test_kg.py",
+      "kind": "function",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 9,
+      "docstring": null,
+      "risk_level": "high"
+    },
+    {
+      "node_id": "m:src/code_kg/codekg_thorough_analysis.py:CodeKGAnalyzer.__init__",
+      "name": "__init__",
+      "module": "src/code_kg/codekg_thorough_analysis.py",
+      "kind": "method",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 17,
+      "docstring": null,
+      "risk_level": "high"
+    },
+    {
+      "node_id": "m:src/code_kg/kg.py:CodeKG.__enter__",
+      "name": "__enter__",
+      "module": "src/code_kg/kg.py",
+      "kind": "method",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 6,
+      "docstring": null,
+      "risk_level": "high"
+    },
+    {
+      "node_id": "m:src/code_kg/store.py:ProvMeta.__repr__",
+      "name": "__repr__",
+      "module": "src/code_kg/store.py",
+      "kind": "method",
+      "fan_in": 0,
+      "fan_out": 0,
+      "lines": 5,
+      "docstring": null,
+      "risk_level": "high"
+    }
+  ],
+  "high_fanout_functions": [],
+  "critical_paths": [
+    {
+      "chain": [
+        "_parse_expr",
+        "test_expr_to_name_simple_name",
+        "test_expr_to_name_attribute",
+        "test_expr_to_name_nested_attribute"
+      ],
+      "depth": 4,
+      "total_callers": 6
+    },
+    {
+      "chain": [
+        "print_summary",
+        "test_queryresult_print_summary_no_nodes",
+        "test_queryresult_print_summary_with_nodes_and_edges",
+        "main"
+      ],
+      "depth": 4,
+      "total_callers": 4
+    },
+    {
+      "chain": [
+        "FunctionMetrics",
+        "_analyze_fan_in",
+        "_analyze_fan_out",
+        "_analyze_dependencies"
+      ],
+      "depth": 4,
+      "total_callers": 3
+    },
+    {
+      "chain": [
+        "CallChain",
+        "_analyze_critical_paths"
+      ],
+      "depth": 2,
+      "total_callers": 1
+    },
+    {
+      "chain": [
+        "main",
+        "main"
+      ],
+      "depth": 2,
+      "total_callers": 1
+    }
+  ],
+  "public_apis": [
+    {
+      "node_id": "fn:tests/test_primitives.py:_parse_expr",
+      "name": "_parse_expr",
+      "module": "tests/test_primitives.py",
+      "kind": "function",
+      "fan_in": 6,
+      "fan_out": 0,
+      "lines": 1,
+      "docstring": null,
+      "risk_level": "low"
+    }
+  ],
+  "issues": [
+    "\u26a0\ufe0f  5 orphaned functions found \u2014 consider archiving or documenting"
+  ],
+  "strengths": [
+    "\u2713 Well-structured with 15 core functions identified",
+    "\u2713 No god objects or god functions detected"
+  ]
+}

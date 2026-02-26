@@ -1,3 +1,21 @@
+# CodeKG - Knowledge Graph Builder for Python Codebases
+#
+# CodeKG is a tool that builds searchable knowledge graphs from Python repositories.
+# It analyzes Python code to extract semantic relationships between modules, classes,
+# functions, and methods, creating a comprehensive graph representation that can be
+# queried using natural language.
+#
+# Key Features:
+# - AST-based code analysis with semantic understanding
+# - Support for multiple storage backends (SQLite, LanceDB)
+# - Natural language querying capabilities
+# - Code snippet extraction and visualization
+# - MCP (Model Context Protocol) server integration
+# - Streamlit-based web interface for exploration
+#
+# The tool is designed for developers who want to understand large codebases,
+# perform code analysis, or build AI-powered development tools.
+
 [build-system]
 requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"

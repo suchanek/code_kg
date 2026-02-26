@@ -13,11 +13,13 @@ Usage:
     python codekg_thorough_analysis.py /path/to/repo /path/to/db .codekg/lancedb
 """
 
+import datetime
 import json
 import logging
+import os
+import subprocess
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -617,16 +619,101 @@ class CodeKGAnalyzer:
                 "— potential orchestrators or god objects"
             )
 
+    @staticmethod
+    def _get_report_metadata() -> str:
+        """Build a Markdown metadata block for the top of the report.
+
+        Collects the generation timestamp, CodeKG package version, and (when
+        available) the current Git commit SHA and branch.  All Git and import
+        operations fail gracefully so the method is safe to call outside of a
+        Git working tree or before the package is installed.
+
+        :return: Formatted Markdown string to prepend to the report.
+        """
+        # --- timestamp ---
+        now = datetime.datetime.now(datetime.timezone.utc)
+        generated = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # --- version ---
+        version = "unknown"
+        try:
+            from code_kg import __version__ as _v  # noqa: PLC0415
+
+            version = f"code-kg {_v}"
+        except Exception:
+            try:
+                from importlib.metadata import version as _pkg_version  # noqa: PLC0415
+
+                version = f"code-kg {_pkg_version('code-kg')}"
+            except Exception:
+                pass
+
+        # --- git commit (prefer CI env vars, fall back to subprocess) ---
+        commit = os.environ.get("GITHUB_SHA", "")
+        if commit:
+            commit = commit[:7]
+        else:
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    commit = result.stdout.strip()
+            except Exception:
+                pass
+        if not commit:
+            commit = "unknown"
+
+        # --- git branch (prefer CI env vars, fall back to subprocess) ---
+        branch = ""
+        github_ref = os.environ.get("GITHUB_REF", "")
+        if github_ref.startswith("refs/heads/"):
+            branch = github_ref[len("refs/heads/") :]
+        elif github_ref.startswith("refs/pull/"):
+            # Pull-request ref: refs/pull/<number>/merge
+            branch = github_ref
+        if not branch:
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    branch = result.stdout.strip()
+            except Exception:
+                pass
+        if not branch:
+            branch = "unknown"
+
+        commit_ref = f"{commit} ({branch})"
+
+        return (
+            "> **Analysis Report Metadata**  \n"
+            f"> - **Generated:** {generated}  \n"
+            f"> - **Version:** {version}  \n"
+            f"> - **Commit:** {commit_ref}  \n"
+            "\n"
+        )
+
     def _write_report(self, report_path: str) -> None:
         """Generate comprehensive markdown report with tables and analysis.
 
         :param report_path: Path to write the markdown report to
         """
-        report_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        report_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         stats = self.stats
 
+        metadata_block = self._get_report_metadata()
+
         # Build comprehensive report
-        report = f"""# CodeKG Repository Analysis Report
+        report = (
+            metadata_block
+            + f"""# CodeKG Repository Analysis Report
 
 **Generated:** {report_date}
 
@@ -668,6 +755,7 @@ Most-called functions are potential bottlenecks or core functionality. These fun
 | # | Function | Module | Callers | Risk Level |
 |---|----------|--------|---------|-----------|
 """
+        )
 
         for i, metrics in enumerate(
             sorted(self.function_metrics.values(), key=lambda m: m.fan_in, reverse=True)[:15],
@@ -854,7 +942,7 @@ Functions with zero callers (potential dead code):
         :return: dictionary with all analysis data
         """
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "statistics": self.stats,
             "function_metrics": {k: asdict(v) for k, v in self.function_metrics.items()},
             "module_metrics": {k: asdict(v) for k, v in self.module_metrics.items()},
@@ -932,7 +1020,7 @@ def _default_report_name(repo_root: Path) -> str:
     :return: Filename string like ``myrepo_analysis_20260224.md``
     """
     repo_name = repo_root.resolve().name
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")
     return f"{repo_name}_analysis_{date_str}.md"
 
 
@@ -1008,6 +1096,7 @@ def main(
 def cli() -> None:
     """CLI entry point for the ``codekg-analyze`` script."""
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(
         prog="codekg-analyze",
@@ -1061,14 +1150,19 @@ def cli() -> None:
     )
 
     args = parser.parse_args()
-    main(
-        repo_root=args.repo_root,
-        db_path=args.db,
-        lancedb_path=args.lancedb,
-        report_path=args.output,
-        json_path=args.json_path,
-        quiet=args.quiet,
-    )
+    try:
+        main(
+            repo_root=args.repo_root,
+            db_path=args.db,
+            lancedb_path=args.lancedb,
+            report_path=args.output,
+            json_path=args.json_path,
+            quiet=args.quiet,
+        )
+    except Exception:
+        logger.exception("Analysis failed")
+        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

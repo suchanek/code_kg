@@ -104,3 +104,20 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 7
+
+  codekg-analysis:
+    name: CodeKG Analysis
+    runs-on: ubuntu-latest
+    # Only run on pull requests and pushes to main
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      pull-requests: write  # required to post analysis summary as a PR comment
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run CodeKG analysis
+        uses: ./.github/actions/codekg-action
+        with:
+          post-comment: "true"
+          fail-on-issues: "false"

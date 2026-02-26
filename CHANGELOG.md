@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`.github/actions/codekg-action/`** — GitHub composite action for automated CodeKG analysis. Builds SQLite + LanceDB indexes, runs architectural analysis, caches the `.codekg/` directory, uploads artifacts, optionally posts PR comments, and can fail the workflow when issues are detected. Configurable via `python-version`, `repo-path`, `report-path`, `json-path`, `model`, `post-comment`, and `fail-on-issues` inputs.
+- **`_get_report_metadata()` method** (`codekg_thorough_analysis.py`) — Generates a Markdown metadata block with generation timestamp (UTC), CodeKG package version, Git commit SHA (7-char short form), and branch. Falls back gracefully to "unknown" when Git is unavailable or running outside a Git repository. Detects CI environment variables (`GITHUB_SHA`, `GITHUB_REF`) for accurate metadata in GitHub Actions workflows.
+
 ### Changed
+
+- **DateTime handling** (`codekg_thorough_analysis.py`) — All datetime calls upgraded to use `datetime.datetime.now(datetime.timezone.utc)` for consistent UTC timestamps across local, CI, and cloud environments. Affects `_write_report()`, `main()`, `_default_report_name()`, and JSON snapshot generation.
+- **Report generation** (`codekg_thorough_analysis.py`) — Markdown report now includes metadata block at the top (timestamp, version, commit ref) prepended to the analysis sections.
+- **CLI error handling** (`codekg_thorough_analysis.py`) — `cli()` function wrapped in try-except, logging exceptions and exiting with status code 1 on failure. Explicit `sys.exit(0)` added on success.
 
 ### Removed
 
