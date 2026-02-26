@@ -60,30 +60,10 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--rels",
-        nargs="+",
-        choices=["CALLS", "IMPORTS", "INHERITS"],
-        default=["CALLS", "IMPORTS", "INHERITS"],
-        metavar="REL",
-        help=(
-            "Edge relation types to render as arcs "
-            "(default: CALLS IMPORTS INHERITS)"
-        ),
+        "--width",  type=int, default=1400, help="Window width in pixels",
     )
     parser.add_argument(
-        "--show-contains",
-        action="store_true",
-        help="Render CONTAINS edges as thin grey lines",
-    )
-    parser.add_argument(
-        "--export-html",
-        metavar="PATH",
-        help="Export the scene to an interactive HTML file and exit",
-    )
-    parser.add_argument(
-        "--export-png",
-        metavar="PATH",
-        help="Save a PNG screenshot of the current view",
+        "--height", type=int, default=900,  help="Window height in pixels",
     )
 
     args = parser.parse_args()
@@ -98,12 +78,10 @@ def main() -> None:
     from code_kg.viz3d import launch
 
     launch(
-        db_path=db,
+        db_path=str(db),
         layout_name=args.layout,
-        show_contains=args.show_contains,
-        rels=set(args.rels),
-        export_html=args.export_html,
-        export_png=args.export_png,
+        width=args.width,
+        height=args.height,
     )
 
 

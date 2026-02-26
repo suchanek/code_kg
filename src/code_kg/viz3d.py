@@ -1,509 +1,1225 @@
-#!/usr/bin/env python3
 """
 viz3d.py — PyVista/PyQt5 3-D knowledge-graph visualiser for CodeKG.
 
-Reads nodes and edges from :class:`~code_kg.store.GraphStore` (SQLite),
-computes a 3-D layout via a pluggable :class:`~code_kg.layout3d.Layout3D`
-strategy, and renders an interactive scene using PyVista and PyQt5.
+Adapted from *repo_vis/pkg_visualizer/pkg_visualizer.py*
+(Eric G. Suchanek, PhD — https://github.com/suchanek/repo_vis).
 
-Node shapes and colours follow the same vocabulary as the Streamlit
-``app.py`` visualiser (pyvis), ensuring visual consistency across views.
+Window layout mirrors repo_vis exactly:
+  Left  — control panel (DB path, layout selector, module filter, render options)
+  Right — PyVista QtInteractor + button row (Spin, Reset View, Reset Settings, status)
 
-Click any node to print its metadata and docstring to the console.
-
-Usage::
-
-    from code_kg.viz3d import KGViz3D
-    from code_kg.layout3d import AlliumLayout
-
-    viz = KGViz3D(".codekg/graph.sqlite", layout=AlliumLayout())
-    viz.build()
-    viz.show()
+Pick any node to open a modeless docstring popup; the picked node is
+highlighted in pink and the camera zooms in, exactly as in repo_vis.
 
 Author: Eric G. Suchanek, PhD
 """
 
+# pylint: disable=C0301,C0116,C0115,W0613,E0611
+
 from __future__ import annotations
 
-import re
+import atexit
+import gc
+import logging
 import sys
+import time
+import warnings
+from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import param
+import pyvista as pv
+from markdown import markdown
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+from pyvistaqt import QtInteractor
+from rich.logging import RichHandler
 
 # ---------------------------------------------------------------------------
-# Colour / shape vocabulary  (aligned with app.py)
+# Logging
 # ---------------------------------------------------------------------------
 
-_KIND_COLOR: Dict[str, str] = {
-    "module": "#4A90D9",    # blue
-    "class": "#E67E22",     # orange
-    "function": "#27AE60",  # green
-    "method": "#8E44AD",    # purple
-    "symbol": "#95A5A6",    # grey
+logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+__version__ = "0.1.0"
+__author__ = "Eric G. Suchanek, PhD"
+
+DEFAULT_DB = ".codekg/graph.sqlite"
+DEFAULT_SAVE = "codekg_3d"
+
+CONTROL_PANEL_WIDTH: int = 240
+BUTTON_WIDTH: int = 120
+ZOOM_FACTOR: float = 10.0
+
+# Node colours (aligned with app.py pyvis visualiser)
+KIND_COLOR: Dict[str, str] = {
+    "module":   "#4A90D9",
+    "class":    "#27AE60",
+    "function": "#E74C3C",
+    "method":   "#3498DB",
+    "symbol":   "#95A5A6",
 }
 
-_REL_COLOR: Dict[str, str] = {
-    "CONTAINS": "#BDC3C7",  # light grey
-    "CALLS": "#E74C3C",     # red
-    "IMPORTS": "#3498DB",   # blue
-    "INHERITS": "#F39C12",  # amber
+# Node sizes (radius)
+KIND_SIZE: Dict[str, float] = {
+    "module": 0.60, "class": 0.45, "function": 0.35,
+    "method": 0.25, "symbol": 0.20,
 }
 
-# Node radius per kind
-_KIND_SIZE: Dict[str, float] = {
-    "module": 0.60,
-    "class": 0.45,
-    "function": 0.35,
-    "method": 0.25,
-    "symbol": 0.20,
+# Edge colours
+REL_COLOR: Dict[str, str] = {
+    "CONTAINS": "#BDC3C7",
+    "CALLS":    "#E74C3C",
+    "IMPORTS":  "#3498DB",
+    "INHERITS": "#F39C12",
 }
 
-# LOD tier thresholds (total node count)
-_LOD_HIGH = 400    # ≤ this: rich geometry (icospheres, cylinders)
-_LOD_LOW = 1500    # ≤ this: cubes; above: small spheres only
-
+# LOD thresholds (total visible nodes)
+LOD_HIGH: int = 400    # icospheres / cylinders
+LOD_LOW: int  = 1500   # cubes; above → small spheres
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Internal geometry helpers
 # ---------------------------------------------------------------------------
 
 
-def _hex_to_rgb(hex_color: str) -> Tuple[float, float, float]:
-    """Convert a ``#RRGGBB`` hex string to an (r, g, b) float tuple in [0, 1].
-
-    :param hex_color: Hex colour string, e.g. ``"#E74C3C"``.
-    :return: ``(r, g, b)`` tuple with components in 0–1.
+def _make_node_mesh(kind: str, center: np.ndarray, size: float, lod: str):
     """
-    h = hex_color.lstrip("#")
-    return tuple(int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))  # type: ignore[return-value]
+    Return a PyVista mesh for a single node, adapting geometry to the LOD tier.
 
-
-def _arc_points(
-    p1: np.ndarray,
-    p2: np.ndarray,
-    n_pts: int = 24,
-    lift_factor: float = 0.35,
-) -> np.ndarray:
+    :param kind: Node kind string (``module``, ``class``, etc.).
+    :param center: 3-D centre position.
+    :param size: Node radius.
+    :param lod: LOD tier — ``"high"``, ``"low"``, or ``"points"``.
+    :return: PyVista PolyData mesh.
     """
-    Generate points along a quadratic Bézier arc between *p1* and *p2*.
+    if lod == "high":
+        if kind == "module":
+            h = size * 0.9
+            return pv.Box(bounds=(
+                center[0] - h, center[0] + h,
+                center[1] - h, center[1] + h,
+                center[2] - h, center[2] + h,
+            ))
+        elif kind == "function":
+            return pv.Cylinder(
+                center=center, direction=(0, 0, 1),
+                radius=size * 0.6, height=size * 1.4, resolution=12,
+            )
+        else:
+            return pv.Icosahedron(radius=size, nsub=1, center=center)
+    elif lod == "low":
+        h = size * 0.9
+        return pv.Box(bounds=(
+            center[0] - h, center[0] + h,
+            center[1] - h, center[1] + h,
+            center[2] - h, center[2] + h,
+        ))
+    else:
+        return pv.Sphere(radius=size * 0.5, center=center,
+                         theta_resolution=4, phi_resolution=4)
 
-    The arc apex is lifted above the straight line by
-    ``lift_factor × |p2 − p1|`` in the Z direction, so edges arc visibly
-    above the node layer and never clip through geometry.
 
-    :param p1: Start point (3-D).
-    :param p2: End point (3-D).
-    :param n_pts: Number of sample points along the arc.
-    :param lift_factor: Fraction of chord length used as Z lift at the apex.
-    :return: ``(n_pts, 3)`` float array of arc sample points.
+def _arc_points(p1: np.ndarray, p2: np.ndarray,
+                n_pts: int = 24, lift: float = 0.35) -> np.ndarray:
     """
-    p1 = np.asarray(p1, dtype=float)
-    p2 = np.asarray(p2, dtype=float)
+    Quadratic Bézier arc from *p1* to *p2*, apex lifted ``lift × chord`` in Z.
+
+    :param p1: Start point.
+    :param p2: End point.
+    :param n_pts: Number of sample points.
+    :param lift: Fraction of chord length used as Z lift.
+    :return: ``(n_pts, 3)`` array.
+    """
+    p1, p2 = np.asarray(p1, float), np.asarray(p2, float)
     mid = (p1 + p2) / 2.0
-    chord = np.linalg.norm(p2 - p1)
-    mid[2] += lift_factor * chord  # lift apex upward in Z
-
+    mid[2] += lift * np.linalg.norm(p2 - p1)
     t = np.linspace(0.0, 1.0, n_pts)[:, None]
-    # Quadratic Bézier: B(t) = (1-t)² p1 + 2t(1-t) mid + t² p2
     return (1 - t) ** 2 * p1 + 2 * t * (1 - t) * mid + t**2 * p2
 
 
-def _format_docstring(docstring: str | None) -> str:
+def _docstring_to_markdown(docstring: Optional[str]) -> str:
     """
-    Strip ``:param:``-style annotations from a docstring for console display.
+    Convert a ``:param:``-style docstring to Markdown.
+    Adapted from ``utility.format_docstring_to_markdown`` in *repo_vis*.
 
     :param docstring: Raw Python docstring, or ``None``.
-    :return: Human-readable plain-text string.
+    :return: Markdown-formatted string.
     """
+    import re
     if not docstring:
-        return "(no docstring)"
-    lines = docstring.strip().splitlines()
-    cleaned: List[str] = []
-    for line in lines:
+        return "No docstring available."
+    lines = docstring.strip().split("\n")
+    md: List[str] = [f"# {lines[0]}"]
+    for line in lines[1:]:
         line = line.strip()
-        if re.match(r":type\b|:rtype\b", line):
+        if line.startswith(":type") or line.startswith(":rtype"):
             continue
-        line = re.sub(r":param (\w+):", r"  \1:", line)
-        line = re.sub(r":return:", "  →", line)
-        cleaned.append(line)
-    return "\n".join(cleaned)
+        m = re.match(r":param (\w+): (.+)", line)
+        if m:
+            md.append(f"- **{m.group(1)}**: {m.group(2)}")
+        elif line.startswith(":return:"):
+            md.append(line.replace(":return:", "**Returns:**"))
+        else:
+            md.append(line)
+    return "\n".join(md)
+
+
+def _remove_highlight_actors(plotter: pv.Plotter) -> None:
+    """Remove any leftover pink highlight or outline actors from the plotter."""
+    for name in list(plotter.actors.keys()):
+        if "highlight" in name.lower() or "bounds" in name.lower() or "outline" in name.lower():
+            plotter.remove_actor(name, reset_camera=False)
 
 
 # ---------------------------------------------------------------------------
-# KGViz3D — main renderer class
+# DocstringPopup — copied from repo_vis (with attribution)
 # ---------------------------------------------------------------------------
 
 
-class KGViz3D:
+class DocstringPopup(QDialog):
     """
-    Interactive 3-D knowledge-graph visualiser powered by PyVista and PyQt5.
-
-    Reads the graph from a :class:`~code_kg.store.GraphStore` SQLite file,
-    computes positions via a pluggable :class:`~code_kg.layout3d.Layout3D`
-    strategy, and renders nodes and cross-cutting edges in an interactive
-    PyVista window with eye-dome lighting.
-
-    **Node shapes** (LOD-adaptive):
-
-    - ``module`` → cube
-    - ``class`` → icosphere
-    - ``function`` → cylinder
-    - ``method`` → small icosphere
-    - ``symbol`` → tiny sphere
-
-    **Edge rendering**:
-
-    - ``CONTAINS`` → thin grey lines (opt-in via *show_contains*)
-    - ``CALLS`` → red Bézier arc
-    - ``IMPORTS`` → blue Bézier arc
-    - ``INHERITS`` → amber Bézier arc
-
-    Click anywhere in the scene to identify and describe the nearest node
-    in the console.
-
-    :param db_path: Path to the ``.codekg/graph.sqlite`` SQLite database.
-    :param layout: Layout strategy; defaults to
-        :class:`~code_kg.layout3d.AlliumLayout`.
-    :param rel_filter: Set of edge relation types to render as arcs.
-        Defaults to ``{"CALLS", "IMPORTS", "INHERITS"}``.
-    :param show_contains: Render ``CONTAINS`` edges as thin grey lines.
+    Modeless popup dialog that renders a docstring as HTML Markdown.
+    Adapted from *repo_vis/pkg_visualizer/pkg_visualizer.py*
+    (Eric G. Suchanek, PhD).
     """
 
-    def __init__(
-        self,
-        db_path: str | Path,
-        layout=None,
-        rel_filter: Optional[Set[str]] = None,
-        show_contains: bool = False,
-    ) -> None:
-        """Initialise the visualiser.
-
-        :param db_path: Path to the SQLite database file.
-        :param layout: :class:`~code_kg.layout3d.Layout3D` instance.
-        :param rel_filter: Which non-CONTAINS relation types to render as arcs.
-        :param show_contains: Whether to render CONTAINS edges.
+    def __init__(self, title: str, docstring: str, parent=None,
+                 on_close_callback=None):
         """
-        from code_kg.layout3d import AlliumLayout
+        Initialise the popup window.
 
-        self.db_path = Path(db_path)
-        self.layout = layout or AlliumLayout()
-        self.rel_filter: Set[str] = rel_filter or {"CALLS", "IMPORTS", "INHERITS"}
-        self.show_contains = show_contains
+        :param title: Window title.
+        :param docstring: Raw docstring text (will be rendered as Markdown/HTML).
+        :param parent: Parent widget.
+        :param on_close_callback: Called when the window is closed.
+        """
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumSize(600, 400)
+        self.on_close_callback = on_close_callback
+        self.setWindowModality(Qt.NonModal)
 
-        self._nodes: List = []
-        self._edges: List = []
-        self._positions: Dict[str, np.ndarray] = {}
-        self._id_to_doc: Dict[str, str] = {}
-        self._plotter = None
-        self._lod: str = "high"
+        if parent:
+            geo = parent.screen().geometry()
+            self.move(geo.x() + 50, geo.y() + 50)
 
-    # ------------------------------------------------------------------
-    # Data loading
-    # ------------------------------------------------------------------
+        layout = QVBoxLayout(self)
+        html = markdown(docstring or "No docstring available.")
+        browser = QTextBrowser(self)
+        browser.setHtml(html)
+        layout.addWidget(browser)
 
+        close_btn = QPushButton("Close", self)
+        close_btn.clicked.connect(self.close)
+        layout.addWidget(close_btn)
+
+    def closeEvent(self, event):
+        """Trigger the close callback if set."""
+        if self.on_close_callback:
+            self.on_close_callback()
+        super().closeEvent(event)
+
+
+# ---------------------------------------------------------------------------
+# create_kg_visualization — adapted from create_allium_visualization()
+# ---------------------------------------------------------------------------
+
+
+def create_kg_visualization(
+    viz: "KGVisualizer",
+    nodes,
+    edges,
+    plotter: pv.Plotter,
+) -> Tuple[pv.Plotter, str, Dict[str, dict]]:
+    """
+    Render the knowledge graph into *plotter* using the current layout.
+
+    Mirrors the structure of ``create_allium_visualization`` in *repo_vis*:
+    clears the plotter, sets up lights, computes the layout, builds
+    per-kind ``pv.MultiBlock`` node meshes, builds per-relation edge
+    meshes, and returns the ``actor_to_node`` lookup used by picking.
+
+    :param viz: :class:`KGVisualizer` instance (source of settings and state).
+    :param nodes: List of :class:`~code_kg.layout3d.LayoutNode` objects to render.
+    :param edges: Full edge list (used for layout computation and edge rendering).
+    :param plotter: The ``QtInteractor`` to render into.
+    :return: ``(plotter, title_text, actor_to_node)``
+    """
+    from code_kg.layout3d import AlliumLayout, LayerCakeLayout
+
+    viz.status = "Setting up visualization..."
+    QApplication.processEvents()
+
+    plotter.clear_actors()
+    plotter.remove_all_lights()
+    plotter.enable_anti_aliasing("msaa")
+    plotter.add_axes()
+
+    for pos in [(0, 0, 100), (0, 100, 0), (0, 0, -100)]:
+        plotter.add_light(pv.Light(position=pos, color="white",
+                                   light_type="scene light"))
+
+    # -- Layout
+    layout = AlliumLayout() if viz.layout_name == "allium" else LayerCakeLayout()
+    # Always compute on ALL nodes for stable positions; filtering happens in display
+    from code_kg.layout3d import LayoutEdge as LE
+    all_nodes_for_layout = viz.nodes  # full set for stable layout
+    all_edges_for_layout = viz.edges
+    positions = layout.compute(all_nodes_for_layout, all_edges_for_layout)
+
+    # -- LOD tier
+    n_visible = len(nodes)
+    lod = "high" if n_visible <= LOD_HIGH else "low" if n_visible <= LOD_LOW else "points"
+
+    # -- Build per-kind MultiBlocks
+    kind_blocks: Dict[str, pv.MultiBlock] = {k: pv.MultiBlock() for k in KIND_SIZE}
+    actor_to_node: Dict[str, dict] = {}
+    kind_counters: Dict[str, int] = {k: 0 for k in KIND_SIZE}
+
+    node_id_set = {n.id for n in nodes}
+
+    for node in nodes:
+        pos = positions.get(node.id)
+        if pos is None:
+            continue
+        kind = node.kind
+        if kind not in KIND_SIZE:
+            kind = "symbol"
+
+        mesh = _make_node_mesh(kind, pos, KIND_SIZE[kind], lod)
+        kind_blocks[kind].append(mesh)
+
+        mesh_id = f"{kind}_{kind_counters[kind]}"
+        kind_counters[kind] += 1
+        actor_to_node[mesh_id] = {
+            "kind": kind,
+            "id": node.id,
+            "name": node.name,
+            "module_path": node.module_path,
+            "lineno": node.lineno,
+            "end_lineno": node.end_lineno,
+            "docstring": node.docstring,
+            "position": pos,
+            "mesh": mesh,
+        }
+
+        # Progress update
+        total_nodes = len(nodes)
+        update_every = max(1, total_nodes // 10)
+        rendered = sum(kind_counters.values())
+        if rendered % update_every == 0 or rendered == total_nodes:
+            pct = int(rendered / total_nodes * 100)
+            bar = "█" * (pct // 10) + "░" * ((100 - pct) // 10)
+            viz.status = f"Rendering nodes | {bar} {pct}% ({rendered}/{total_nodes})"
+            QApplication.processEvents()
+
+    # -- Add node MultiBlocks
+    for kind, block in kind_blocks.items():
+        if block.n_blocks > 0:
+            plotter.add_mesh(
+                block,
+                color=KIND_COLOR[kind],
+                show_edges=False,
+                smooth_shading=(lod == "high"),
+                name=f"{kind}_nodes",
+            )
+
+    # -- Edge rendering
+    rel_to_show = set()
+    if viz.show_calls:    rel_to_show.add("CALLS")
+    if viz.show_imports:  rel_to_show.add("IMPORTS")
+    if viz.show_inherits: rel_to_show.add("INHERITS")
+    if viz.show_contains: rel_to_show.add("CONTAINS")
+
+    rel_blocks: Dict[str, pv.MultiBlock] = {r: pv.MultiBlock() for r in rel_to_show}
+
+    viz.status = "Rendering edges..."
+    QApplication.processEvents()
+
+    for edge in edges:
+        if edge.rel not in rel_to_show:
+            continue
+        if edge.src not in node_id_set or edge.dst not in node_id_set:
+            continue
+        p1, p2 = positions.get(edge.src), positions.get(edge.dst)
+        if p1 is None or p2 is None:
+            continue
+
+        if edge.rel == "CONTAINS":
+            rel_blocks["CONTAINS"].append(pv.Line(p1, p2))
+        else:
+            arc_pts = _arc_points(p1, p2)
+            rel_blocks[edge.rel].append(pv.Spline(arc_pts, n_points=24))
+
+    for rel, block in rel_blocks.items():
+        if block.n_blocks > 0:
+            is_contains = rel == "CONTAINS"
+            plotter.add_mesh(
+                block,
+                color=REL_COLOR[rel],
+                line_width=0.5 if is_contains else 1.5,
+                opacity=0.25 if is_contains else 0.70,
+                name=f"{rel.lower()}_edges",
+            )
+
+    # -- Stats
+    total_faces = 0
+    for block in kind_blocks.values():
+        for i in range(block.n_blocks):
+            mesh = block[i]
+            if hasattr(mesh, "n_faces_strict"):
+                total_faces += mesh.n_faces_strict
+    viz.num_faces = total_faces
+
+    title = (
+        f"CodeKG 3D | {Path(viz.db_path).name} | "
+        f"Modules: {viz.num_modules}  Classes: {viz.num_classes}  "
+        f"Methods: {viz.num_methods}  Functions: {viz.num_functions}  "
+        f"Faces: {total_faces}"
+    )
+
+    plotter.view_xy()
+    plotter.reset_camera()
+    plotter.render()
+
+    viz.status = "Scene generation complete."
+    QApplication.processEvents()
+
+    return plotter, title, actor_to_node
+
+
+# ---------------------------------------------------------------------------
+# KGVisualizer — adapted from PackageVisualizer
+# ---------------------------------------------------------------------------
+
+
+class KGVisualizer(param.Parameterized):
+    """
+    Data and state model for the CodeKG 3-D visualiser.
+    Adapted from ``PackageVisualizer`` in *repo_vis*.
+
+    Reactive attributes (via ``param``) drive the Qt control panel;
+    watched parameters trigger graph reload or UI updates automatically.
+    """
+
+    db_path: str = param.String(default=DEFAULT_DB, doc="SQLite database path")
+    layout_name: str = param.Selector(objects=["allium", "cake"], default="allium",
+                                      doc="3-D layout strategy")
+    save_path: str = param.String(default=DEFAULT_SAVE, doc="Save path stem")
+    save_format: str = param.Selector(objects=["html", "png", "jpg"],
+                                      default="html", doc="Export format")
+
+    # Node kind visibility
+    show_methods: bool  = param.Boolean(default=True,  doc="Render method nodes")
+    show_symbols: bool  = param.Boolean(default=False, doc="Render symbol stub nodes")
+    # Edge visibility
+    show_calls:    bool = param.Boolean(default=True,  doc="Render CALLS edges")
+    show_imports:  bool = param.Boolean(default=True,  doc="Render IMPORTS edges")
+    show_inherits: bool = param.Boolean(default=True,  doc="Render INHERITS edges")
+    show_contains: bool = param.Boolean(default=False, doc="Render CONTAINS edges")
+
+    # Status / title
+    status: str       = param.String(default="Ready", doc="Status bar text")
+    window_title: str = param.String(default=f"CodeKG 3D v{__version__}",
+                                     doc="Window title")
+
+    # Stats
+    num_modules:   int = param.Integer(default=0)
+    num_classes:   int = param.Integer(default=0)
+    num_functions: int = param.Integer(default=0)
+    num_methods:   int = param.Integer(default=0)
+    num_faces:     int = param.Integer(default=0)
+
+    # Module selector data
+    available_modules: List[str] = param.List(default=[], doc="Available module names")
+    selected_modules:  List[str] = param.ListSelector(default=[], objects=[],
+                                                       doc="Selected module names")
+
+    def __init__(self, plotter: Optional[pv.Plotter] = None, **params) -> None:
+        """
+        Initialise the visualiser data model.
+
+        :param plotter: The ``QtInteractor`` to render into.
+        :param params: Additional ``param`` keyword arguments.
+        """
+        super().__init__(**params)
+        self.plotter: Optional[pv.Plotter] = plotter
+        self.nodes: List = []
+        self.edges: List = []
+        self.actor_to_node: Dict[str, dict] = {}
+        self._load_graph()
+
+    @param.depends("db_path", watch=True)
     def _load_graph(self) -> None:
-        """Load all nodes and edges from the SQLite store.
-
-        Populates ``self._nodes`` and ``self._edges`` as
-        :class:`~code_kg.layout3d.LayoutNode` /
-        :class:`~code_kg.layout3d.LayoutEdge` instances.
-        """
+        """Reload nodes and edges from the SQLite database."""
         from code_kg.layout3d import LayoutEdge, LayoutNode
         from code_kg.store import GraphStore
 
-        with GraphStore(self.db_path) as store:
+        db = Path(self.db_path)
+        if not db.exists():
+            self.status = f"Error: database not found: {db}"
+            return
+
+        self.status = "Loading graph..."
+        QApplication.processEvents()
+
+        with GraphStore(db) as store:
             raw_nodes = store.query_nodes()
             node_ids = {n["id"] for n in raw_nodes}
             raw_edges = store.edges_within(node_ids)
 
-        self._nodes = [LayoutNode.from_dict(n) for n in raw_nodes]
-        self._edges = [LayoutEdge.from_dict(e) for e in raw_edges]
-        self._id_to_doc = {
-            n.id: _format_docstring(n.docstring) for n in self._nodes
-        }
+        self.nodes = [LayoutNode.from_dict(n) for n in raw_nodes]
+        self.edges = [LayoutEdge.from_dict(e) for e in raw_edges]
 
-    # ------------------------------------------------------------------
-    # Build
-    # ------------------------------------------------------------------
+        counts = Counter(n.kind for n in self.nodes)
+        self.num_modules   = counts.get("module", 0)
+        self.num_classes   = counts.get("class", 0)
+        self.num_functions = counts.get("function", 0)
+        self.num_methods   = counts.get("method", 0)
 
-    def build(self) -> KGViz3D:
+        mod_names = sorted(n.name for n in self.nodes if n.kind == "module")
+        self.available_modules = mod_names
+        self.param.selected_modules.objects = mod_names
+        self.selected_modules = []
+
+        self.window_title = (
+            f"CodeKG 3D | {db.name} | "
+            f"Modules: {self.num_modules}  Classes: {self.num_classes}  "
+            f"Methods: {self.num_methods}  Functions: {self.num_functions}"
+        )
+        self.status = (
+            f"Loaded: {len(self.nodes)} nodes, {len(self.edges)} edges"
+        )
+
+        if self.plotter and hasattr(self.plotter, "clear_actors"):
+            self.plotter.clear_actors()
+
+    def visualize(self) -> None:
         """
-        Load the graph, compute the 3-D layout, and render the scene.
+        Build and render the 3-D scene using the current settings.
 
-        :return: ``self`` (for method chaining).
-        :raises ImportError: If PyVista / pyvistaqt are not installed.
+        Applies the selected module filter, then delegates to
+        :func:`create_kg_visualization`.
         """
+        if not self.plotter:
+            return
+        if not self.nodes:
+            self.status = "No data — check DB path."
+            return
+
+        # Apply module filter
+        if self.selected_modules:
+            contains_children: Dict[str, List[str]] = {}
+            for e in self.edges:
+                if e.rel == "CONTAINS":
+                    contains_children.setdefault(e.src, []).append(e.dst)
+
+            def subtree(root_id: str) -> set:
+                s = {root_id}
+                for c in contains_children.get(root_id, []):
+                    s |= subtree(c)
+                return s
+
+            in_scope: set = set()
+            for mod_name in self.selected_modules:
+                mod_node = next(
+                    (n for n in self.nodes if n.kind == "module" and n.name == mod_name),
+                    None,
+                )
+                if mod_node:
+                    in_scope |= subtree(mod_node.id)
+
+            # Respect show_methods / show_symbols
+            visible_nodes = [
+                n for n in self.nodes
+                if n.id in in_scope and self._kind_visible(n.kind)
+            ]
+        else:
+            visible_nodes = [n for n in self.nodes if self._kind_visible(n.kind)]
+
         try:
-            import pyvista as pv
-            from pyvistaqt import BackgroundPlotter
-        except ImportError as exc:
-            raise ImportError(
-                "PyVista dependencies not installed. "
-                "Run: poetry install --extras viz3d"
-            ) from exc
-
-        self._load_graph()
-        n_total = len(self._nodes)
-        print(f"[codekg-viz3d] {n_total} nodes, {len(self._edges)} edges")
-        print(f"[codekg-viz3d] layout : {type(self.layout).__name__}")
-
-        self._positions = self.layout.compute(self._nodes, self._edges)
-
-        # Select LOD tier
-        if n_total <= _LOD_HIGH:
-            self._lod = "high"
-        elif n_total <= _LOD_LOW:
-            self._lod = "low"
-        else:
-            self._lod = "points"
-        print(f"[codekg-viz3d] LOD    : {self._lod} ({n_total} nodes)")
-
-        pv.set_plot_theme("dark")
-        self._plotter = BackgroundPlotter(title="CodeKG 3D — " + self.db_path.name)
-        self._plotter.enable_eye_dome_lighting()
-
-        self._render_nodes()
-        self._render_edges()
-
-        self._plotter.enable_point_picking(
-            callback=self._on_pick,
-            show_message=False,
-            use_mesh=False,
-        )
-        self._plotter.add_axes()
-        self._plotter.reset_camera()
-        return self
-
-    # ------------------------------------------------------------------
-    # Node rendering
-    # ------------------------------------------------------------------
-
-    def _node_mesh(self, kind: str, center: np.ndarray, size: float):
-        """
-        Return a PyVista mesh for a node, adapting geometry to the LOD tier.
-
-        - ``"high"`` LOD: cubes (modules), cylinders (functions),
-          icospheres (classes/methods/symbols).
-        - ``"low"`` LOD: cubes for all kinds.
-        - ``"points"`` LOD: minimal spheres.
-
-        :param kind: Node kind string.
-        :param center: 3-D centre position array.
-        :param size: Node radius.
-        :return: PyVista PolyData mesh.
-        """
-        import pyvista as pv
-
-        if self._lod == "high":
-            if kind == "module":
-                h = size * 0.9
-                return pv.Box(
-                    bounds=(
-                        center[0] - h, center[0] + h,
-                        center[1] - h, center[1] + h,
-                        center[2] - h, center[2] + h,
-                    )
-                )
-            elif kind == "function":
-                return pv.Cylinder(
-                    center=center,
-                    direction=(0, 0, 1),
-                    radius=size * 0.6,
-                    height=size * 1.4,
-                    resolution=12,
-                )
-            else:
-                # class, method, symbol → icosphere
-                return pv.Icosphere(radius=size, nsub=1, center=center)
-
-        elif self._lod == "low":
-            h = size * 0.9
-            return pv.Box(
-                bounds=(
-                    center[0] - h, center[0] + h,
-                    center[1] - h, center[1] + h,
-                    center[2] - h, center[2] + h,
-                )
+            _, title, actor_to_node = create_kg_visualization(
+                self, visible_nodes, self.edges, self.plotter
             )
-        else:
-            # "points" — minimal geometry
-            return pv.Sphere(
-                radius=size * 0.5,
-                center=center,
-                theta_resolution=4,
-                phi_resolution=4,
-            )
+            self.actor_to_node = actor_to_node
+            self.window_title = title
+        except (ValueError, RuntimeError) as exc:
+            self.status = f"Error: {exc}"
 
-    def _render_nodes(self) -> None:
-        """Add all node meshes to the plotter with kind-based colours."""
-        for node in self._nodes:
-            pos = self._positions.get(node.id)
-            if pos is None:
-                continue
-            size = _KIND_SIZE.get(node.kind, 0.3)
-            color = _KIND_COLOR.get(node.kind, "#AAAAAA")
-            mesh = self._node_mesh(node.kind, pos, size)
-            self._plotter.add_mesh(
-                mesh,
-                color=color,
-                smooth_shading=True,
-                name=node.id,
-            )
-
-    # ------------------------------------------------------------------
-    # Edge rendering
-    # ------------------------------------------------------------------
-
-    def _render_edges(self) -> None:
-        """Render cross-cutting edges as coloured Bézier arcs or lines."""
-        import pyvista as pv
-
-        for edge in self._edges:
-            src_pos = self._positions.get(edge.src)
-            dst_pos = self._positions.get(edge.dst)
-            if src_pos is None or dst_pos is None:
-                continue
-
-            color = _REL_COLOR.get(edge.rel, "#AAAAAA")
-
-            if edge.rel == "CONTAINS":
-                if not self.show_contains:
-                    continue
-                line = pv.Line(src_pos, dst_pos)
-                self._plotter.add_mesh(
-                    line, color=color, line_width=0.5, opacity=0.25
-                )
-
-            elif edge.rel in self.rel_filter:
-                arc_pts = _arc_points(src_pos, dst_pos)
-                spline = pv.Spline(arc_pts, n_points=24)
-
-                if self._lod == "high":
-                    mesh = spline.tube(radius=0.04)
-                    self._plotter.add_mesh(mesh, color=color, opacity=0.75)
-                else:
-                    self._plotter.add_mesh(
-                        spline, color=color, line_width=1.5, opacity=0.65
-                    )
-
-    # ------------------------------------------------------------------
-    # Picking
-    # ------------------------------------------------------------------
-
-    def _on_pick(self, point: np.ndarray) -> None:
-        """
-        Handle a pick event: find the nearest node and print its info.
-
-        :param point: World-space pick coordinates from PyVista.
-        """
-        if not self._positions:
-            return
-
-        pt = np.asarray(point, dtype=float)
-        best_id = min(
-            self._positions,
-            key=lambda nid: float(np.linalg.norm(self._positions[nid] - pt)),
-        )
-
-        node = next((n for n in self._nodes if n.id == best_id), None)
-        if node is None:
-            return
-
-        print(f"\n── {node.kind.upper()}: {node.name} ──")
-        if node.module_path:
-            print(f"   module  : {node.module_path}")
-        if node.lineno:
-            end = node.end_lineno or "?"
-            print(f"   lines   : {node.lineno}–{end}")
-        print(f"   id      : {node.id}")
-        doc = self._id_to_doc.get(node.id, "(no docstring)")
-        if doc != "(no docstring)":
-            # Truncate for console readability
-            snippet = doc[:300] + ("…" if len(doc) > 300 else "")
-            print(f"   docstring:\n{snippet}")
-
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
-
-    def show(self) -> None:
-        """Display the 3-D window.  Blocks until the window is closed.
-
-        :raises RuntimeError: If :meth:`build` has not been called.
-        """
-        if self._plotter is None:
-            raise RuntimeError("Call .build() before .show()")
-        self._plotter.show()
-
-    def export_html(self, path: str | Path = "codekg_3d.html") -> None:
-        """
-        Export the scene to a self-contained interactive HTML file.
-
-        :param path: Output file path.
-        :raises RuntimeError: If :meth:`build` has not been called.
-        """
-        if self._plotter is None:
-            raise RuntimeError("Call .build() before .export_html()")
-        self._plotter.export_html(str(path))
-        print(f"[codekg-viz3d] exported → {path}")
-
-    def export_png(self, path: str | Path = "codekg_3d.png") -> None:
-        """
-        Save a PNG screenshot of the current camera view.
-
-        :param path: Output file path.
-        :raises RuntimeError: If :meth:`build` has not been called.
-        """
-        if self._plotter is None:
-            raise RuntimeError("Call .build() before .export_png()")
-        self._plotter.screenshot(str(path))
-        print(f"[codekg-viz3d] screenshot → {path}")
+    def _kind_visible(self, kind: str) -> bool:
+        """Return ``True`` if nodes of this kind should be rendered."""
+        if kind == "method"  and not self.show_methods:  return False
+        if kind == "symbol"  and not self.show_symbols:  return False
+        return True
 
 
 # ---------------------------------------------------------------------------
-# Convenience launcher (used by codekg_viz3d.py CLI)
+# MainWindow — adapted from repo_vis MainWindow
+# ---------------------------------------------------------------------------
+
+
+class MainWindow(QMainWindow):
+    """
+    Full Qt main window for the CodeKG 3-D visualiser.
+
+    Layout mirrors *repo_vis/pkg_visualizer/pkg_visualizer.py*:
+    - **Left** — control panel (DB path, layout, module filter, render options)
+    - **Right** — PyVista ``QtInteractor`` + button row
+
+    Adapted from ``MainWindow`` in *repo_vis* (Eric G. Suchanek, PhD).
+    """
+
+    status_changed: pyqtSignal = pyqtSignal(str)
+
+    def __init__(
+        self,
+        db_path: str = DEFAULT_DB,
+        save_path: str = DEFAULT_SAVE,
+        width: int = 1400,
+        height: int = 900,
+    ) -> None:
+        """
+        Initialise the main window.
+
+        :param db_path: Path to the ``.codekg/graph.sqlite`` file.
+        :param save_path: Default output file stem for exports.
+        :param width: Initial window width in pixels.
+        :param height: Initial window height in pixels.
+        """
+        super().__init__()
+
+        self.timer = None
+        self.current_frame = 0
+        self.spin_count = 0
+        self._current_picked_actor = None
+        self._current_popup: Optional[DocstringPopup] = None
+        self._original_camera_state = None
+
+        self.setGeometry(100, 100, width, height)
+
+        pv.set_plot_theme("dark")
+        self.vtk_plotter: QtInteractor = QtInteractor(self, theme=pv._GlobalTheme())
+        self.visualizer: KGVisualizer = KGVisualizer(
+            plotter=self.vtk_plotter,
+            db_path=db_path,
+            save_path=save_path,
+        )
+        self.plotter = self.vtk_plotter  # convenience alias
+
+        self.setWindowTitle(self.visualizer.window_title)
+
+        # ── Central widget ──────────────────────────────────────────────────
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+
+        self.setStyleSheet("""
+            QWidget { font-family: Arial; font-size: 12px; }
+            QLineEdit, QComboBox, QListWidget, QCheckBox, QPushButton, QLabel
+                { margin: 2px; padding: 3px; }
+            QLineEdit, QComboBox, QListWidget
+                { border: 1px solid #555; border-radius: 3px; }
+            QPushButton { background-color: #4CAF50; color: white; border: none;
+                          border-radius: 3px; padding: 6px; }
+            QPushButton#reset-view  { background-color: #FFEB3B; color: black; }
+            QPushButton#reset-all   { background-color: #E53935; color: white; }
+            QPushButton#spin-btn    { background-color: #2196F3; color: white; }
+            QLabel { border: 1px solid #555; background-color: #2a2a2a;
+                     color: #e0e0e0; padding: 4px; }
+        """)
+
+        # ── Left: control panel ─────────────────────────────────────────────
+        ctrl = QVBoxLayout()
+        ctrl.setSpacing(5)
+        ctrl.setContentsMargins(6, 6, 6, 6)
+
+        def _h2(text: str) -> QLabel:
+            lbl = QLabel(f"<b style='font-size:13px;'>{text}</b>")
+            lbl.setStyleSheet("background:transparent; border:none;")
+            return lbl
+
+        def _lbl(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setStyleSheet("background:transparent; border:none;")
+            return lbl
+
+        # Input Parameters
+        ctrl.addWidget(_h2("Input Parameters"))
+
+        ctrl.addWidget(_lbl("<b>Database Path</b>"))
+        self.db_path_input = QLineEdit(self.visualizer.db_path)
+        self.db_path_input.setPlaceholderText(".codekg/graph.sqlite")
+        ctrl.addWidget(self.db_path_input)
+
+        ctrl.addWidget(_lbl("<b>Layout</b>"))
+        self.layout_select = QComboBox()
+        self.layout_select.addItems(["allium", "cake"])
+        self.layout_select.setCurrentText(self.visualizer.layout_name)
+        ctrl.addWidget(self.layout_select)
+
+        ctrl.addWidget(_lbl("<b>Save Path</b>"))
+        self.save_path_input = QLineEdit(self.visualizer.save_path)
+        ctrl.addWidget(self.save_path_input)
+
+        ctrl.addWidget(_lbl("<b>Save Format</b>"))
+        self.save_format_select = QComboBox()
+        self.save_format_select.addItems(["html", "png", "jpg"])
+        self.save_format_select.setCurrentText(self.visualizer.save_format)
+        ctrl.addWidget(self.save_format_select)
+
+        # Module Filter
+        ctrl.addWidget(_h2("Module Filter"))
+        ctrl.addWidget(_lbl("Select module (empty = all):"))
+        self.module_selector = QListWidget()
+        self.module_selector.setSelectionMode(QListWidget.SingleSelection)
+        self.module_selector.setMaximumHeight(90)
+        for name in self.visualizer.available_modules:
+            self.module_selector.addItem(name)
+        ctrl.addWidget(self.module_selector)
+
+        # Render Options
+        ctrl.addWidget(_h2("Render Options"))
+
+        cb_row1 = QHBoxLayout()
+        self.cb_methods  = QCheckBox("Methods");  self.cb_methods.setChecked(self.visualizer.show_methods)
+        self.cb_symbols  = QCheckBox("Symbols");  self.cb_symbols.setChecked(self.visualizer.show_symbols)
+        self.cb_contains = QCheckBox("CONTAINS"); self.cb_contains.setChecked(self.visualizer.show_contains)
+        for w in (self.cb_methods, self.cb_symbols, self.cb_contains):
+            cb_row1.addWidget(w)
+        ctrl.addLayout(cb_row1)
+
+        ctrl.addWidget(_lbl("<b>Edge Types</b>"))
+        cb_row2 = QHBoxLayout()
+        self.cb_calls    = QCheckBox("CALLS");    self.cb_calls.setChecked(self.visualizer.show_calls)
+        self.cb_imports  = QCheckBox("IMPORTS");  self.cb_imports.setChecked(self.visualizer.show_imports)
+        self.cb_inherits = QCheckBox("INHERITS"); self.cb_inherits.setChecked(self.visualizer.show_inherits)
+        for w in (self.cb_calls, self.cb_imports, self.cb_inherits):
+            cb_row2.addWidget(w)
+        ctrl.addLayout(cb_row2)
+
+        # Stats label
+        ctrl.addWidget(_lbl("<b>Graph Statistics</b>"))
+        self.stats_label = QLabel(self._stats_text())
+        self.stats_label.setWordWrap(True)
+        ctrl.addWidget(self.stats_label)
+
+        ctrl.addStretch()
+
+        # Bottom buttons
+        btn_row1 = QHBoxLayout()
+        self.visualize_button = QPushButton("Render Graph")
+        self.show_docstring_button = QPushButton("Show Docstring")
+        btn_row1.addWidget(self.visualize_button)
+        btn_row1.addWidget(self.show_docstring_button)
+        ctrl.addLayout(btn_row1)
+
+        self.save_button = QPushButton("Save View")
+        ctrl.addWidget(self.save_button)
+
+        # ── Right: viewport + button row ────────────────────────────────────
+        vis = QVBoxLayout()
+        vis.setSpacing(10)
+        vis.setContentsMargins(10, 10, 10, 10)
+        vis.addWidget(self.vtk_plotter, stretch=1)
+        vis.addStretch()
+
+        btn_row2 = QHBoxLayout()
+
+        self.button_spin = QPushButton("Spin")
+        self.button_spin.setObjectName("spin-btn")
+        self.button_spin.setFixedWidth(BUTTON_WIDTH)
+        btn_row2.addWidget(self.button_spin)
+
+        self.reset_view_button = QPushButton("Reset View")
+        self.reset_view_button.setObjectName("reset-view")
+        self.reset_view_button.setFixedWidth(BUTTON_WIDTH)
+        btn_row2.addWidget(self.reset_view_button)
+
+        self.reset_settings_button = QPushButton("Reset Settings")
+        self.reset_settings_button.setObjectName("reset-all")
+        self.reset_settings_button.setFixedWidth(BUTTON_WIDTH)
+        btn_row2.addWidget(self.reset_settings_button)
+
+        self.status_display = QLabel("Ready")
+        self.status_display.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.status_display.setStyleSheet("font-weight:bold; font-size:13px;")
+        btn_row2.addWidget(self.status_display, stretch=1)
+
+        vis.addLayout(btn_row2)
+
+        # ── Wrap and add to main layout ─────────────────────────────────────
+        ctrl_widget = QWidget()
+        ctrl_widget.setLayout(ctrl)
+        ctrl_widget.setFixedWidth(CONTROL_PANEL_WIDTH)
+
+        vis_widget = QWidget()
+        vis_widget.setLayout(vis)
+
+        main_layout.addWidget(ctrl_widget)
+        main_layout.addWidget(vis_widget, stretch=1)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(5)
+
+        central.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        ctrl_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+
+        # ── Mesh picking (mirrors repo_vis) ─────────────────────────────────
+        self.vtk_plotter.enable_mesh_picking(
+            callback=self.on_pick,
+            show=False,
+            show_actors=False,
+            show_message=False,
+            font_size=14,
+            left_clicking=False,
+            use_actor=True,
+            through=True,
+        )
+        if hasattr(self.vtk_plotter, "picker"):
+            self.vtk_plotter.picker.SetTolerance(0.005)
+            self.vtk_plotter.picker.SetPickFromList(0)
+
+        # ── Signal/slot connections ─────────────────────────────────────────
+        self.db_path_input.editingFinished.connect(self.update_db_path)
+        self.layout_select.currentTextChanged.connect(self.update_layout)
+        self.save_path_input.textChanged.connect(lambda t: setattr(self.visualizer, "save_path", t))
+        self.save_format_select.currentTextChanged.connect(lambda t: setattr(self.visualizer, "save_format", t))
+        self.module_selector.itemSelectionChanged.connect(self.update_selected_modules)
+
+        self.cb_methods.stateChanged.connect(lambda s: setattr(self.visualizer, "show_methods",  s == Qt.Checked))
+        self.cb_symbols.stateChanged.connect(lambda s: setattr(self.visualizer, "show_symbols",  s == Qt.Checked))
+        self.cb_contains.stateChanged.connect(lambda s: setattr(self.visualizer, "show_contains", s == Qt.Checked))
+        self.cb_calls.stateChanged.connect(lambda s: setattr(self.visualizer, "show_calls",    s == Qt.Checked))
+        self.cb_imports.stateChanged.connect(lambda s: setattr(self.visualizer, "show_imports",  s == Qt.Checked))
+        self.cb_inherits.stateChanged.connect(lambda s: setattr(self.visualizer, "show_inherits", s == Qt.Checked))
+
+        self.visualize_button.clicked.connect(self.on_visualize_clicked)
+        self.show_docstring_button.clicked.connect(self.show_selected_docstring)
+        self.save_button.clicked.connect(self.save_current_view)
+        self.button_spin.clicked.connect(self.spin_camera)
+        self.reset_view_button.clicked.connect(self.reset_camera)
+        self.reset_settings_button.clicked.connect(self.reset_settings)
+
+        self.status_changed.connect(self.update_status_display)
+        self.visualizer.param.watch(self.on_status_change, "status")
+        self.visualizer.param.watch(self.update_module_selector, "available_modules")
+        self.visualizer.param.watch(self.update_window_title, "window_title")
+        self.visualizer.param.watch(lambda e: self.stats_label.setText(self._stats_text()), "num_faces")
+
+        font = QFont("Arial", 12)
+        self.setFont(font)
+        self.resize(width, height)
+
+    # ── Stats helper ────────────────────────────────────────────────────────
+
+    def _stats_text(self) -> str:
+        v = self.visualizer
+        return (
+            f"Modules: {v.num_modules}   Classes: {v.num_classes}\n"
+            f"Methods: {v.num_methods}   Functions: {v.num_functions}\n"
+            f"Faces: {v.num_faces}"
+        )
+
+    # ── Control panel updates ───────────────────────────────────────────────
+
+    def update_db_path(self) -> None:
+        """Handle DB path text field edit-finished."""
+        text = self.db_path_input.text().strip()
+        self.visualizer.db_path = text
+        self.module_selector.clear()
+        for name in self.visualizer.available_modules:
+            self.module_selector.addItem(name)
+
+    def update_layout(self, name: str) -> None:
+        """Handle layout combo-box change."""
+        self.visualizer.layout_name = name
+
+    def update_selected_modules(self) -> None:
+        """Sync QListWidget selection to visualizer.selected_modules."""
+        self.visualizer.selected_modules = [
+            item.text() for item in self.module_selector.selectedItems()
+        ]
+
+    def update_module_selector(self, event: param.Event) -> None:
+        """Refresh module list when available_modules changes."""
+        self.module_selector.clear()
+        for name in event.new:
+            self.module_selector.addItem(name)
+
+    def update_window_title(self, event: param.Event) -> None:
+        """Update the window title bar."""
+        self.setWindowTitle(event.new)
+
+    # ── Visualize ───────────────────────────────────────────────────────────
+
+    def on_visualize_clicked(self) -> None:
+        """Trigger a full scene rebuild."""
+        self.visualizer.visualize()
+
+    # ── Picking (mirrors repo_vis on_pick exactly) ──────────────────────────
+
+    def on_pick(self, actor) -> None:
+        """
+        Callback fired when the user right-clicks a node mesh.
+        Finds the nearest node, highlights it, and shows the docstring popup.
+        Adapted from ``MainWindow.on_pick`` in *repo_vis*.
+        """
+        if not self.visualizer.plotter:
+            return
+        self.reset_actor_appearances()
+
+        if self._current_popup and self._current_popup.isVisible():
+            self._current_popup.close()
+            self._current_popup = None
+
+        if actor is None:
+            self.update_status_display("No object picked.")
+            return
+
+        if not hasattr(self.vtk_plotter, "picked_point") or self.vtk_plotter.picked_point is None:
+            self.update_status_display("No object picked.")
+            return
+
+        picked_point = np.asarray(self.vtk_plotter.picked_point, float)
+
+        # Identify actor by name
+        picked_name = None
+        for name, act in self.plotter.actors.items():
+            if act == actor:
+                picked_name = name
+                break
+
+        if picked_name is None:
+            self.update_status_display("Could not identify picked object.")
+            return
+
+        # Extract kind from actor name: "{kind}_nodes"
+        picked_kind = None
+        for kind in KIND_SIZE:
+            if picked_name == f"{kind}_nodes":
+                picked_kind = kind
+                break
+
+        if picked_kind is None:
+            self.update_status_display(f"Unknown actor: {picked_name}")
+            return
+
+        # Find closest node of that kind
+        best_id, best_dist = None, float("inf")
+        for mesh_id, elem in self.visualizer.actor_to_node.items():
+            if elem["kind"] != picked_kind:
+                continue
+            pos = np.asarray(elem["position"], float)
+            d = float(np.linalg.norm(pos - picked_point))
+            if d < best_dist:
+                best_dist = d
+                best_id = mesh_id
+
+        if best_id is None:
+            self.update_status_display(f"No {picked_kind} near pick point.")
+            return
+
+        elem = self.visualizer.actor_to_node[best_id]
+        self.highlight_actor(elem["mesh"])
+        title = f"{elem['kind'].capitalize()}: {elem['name']}"
+        self._current_popup = DocstringPopup(
+            title,
+            _docstring_to_markdown(elem.get("docstring")),
+            self,
+            on_close_callback=self.reset_picking_state,
+        )
+        self._current_popup.show()
+
+    def highlight_actor(self, mesh) -> None:
+        """
+        Highlight *mesh* in pink, focus camera, and zoom.
+        Adapted from ``MainWindow.highlight_actor`` in *repo_vis*.
+        """
+        if not self.plotter:
+            return
+        self.reset_actor_appearances()
+        self.reset_camera()
+
+        self.plotter.add_mesh(
+            mesh,
+            color="pink",
+            show_edges=True,
+            edge_color="white",
+            line_width=3,
+            pickable=False,
+            show_scalar_bar=False,
+            reset_camera=False,
+            name="_kg_highlight",
+        )
+        self._current_picked_actor = self.plotter.actors.get("_kg_highlight")
+
+        self._original_camera_state = {
+            "position":    self.plotter.camera.position,
+            "focal_point": self.plotter.camera.focal_point,
+            "view_up":     self.plotter.camera.up,
+        }
+
+        self.plotter.camera.focal_point = np.array(mesh.center)
+        self.plotter.camera.Zoom(ZOOM_FACTOR)
+        self.plotter.render()
+
+    def reset_actor_appearances(self) -> None:
+        """Reset pick highlights and restore actor colours."""
+        if self._current_picked_actor:
+            self.plotter.remove_actor(self._current_picked_actor, reset_camera=False)
+            self._current_picked_actor = None
+
+        for kind in KIND_SIZE:
+            actor = self.plotter.actors.get(f"{kind}_nodes")
+            if actor:
+                actor.prop.color = KIND_COLOR[kind]
+                actor.prop.show_edges = False
+                actor.prop.line_width = 1
+
+        _remove_highlight_actors(self.plotter)
+
+    def reset_picking_state(self) -> None:
+        """Clear pick state after popup is closed."""
+        self.reset_actor_appearances()
+        self.module_selector.clearSelection()
+        self.update_status_display("Ready")
+        self.plotter.render()
+
+    # ── Docstring button ────────────────────────────────────────────────────
+
+    def show_selected_docstring(self) -> None:
+        """Show docstring for the selected module in the list (if any)."""
+        items = self.module_selector.selectedItems()
+        if not items:
+            self.update_status_display("Select a module first.")
+            return
+        mod_name = items[0].text()
+        mod_node = next(
+            (n for n in self.visualizer.nodes if n.kind == "module" and n.name == mod_name),
+            None,
+        )
+        if mod_node is None:
+            return
+        self._current_popup = DocstringPopup(
+            f"Module: {mod_name}",
+            _docstring_to_markdown(mod_node.docstring),
+            self,
+            on_close_callback=self.reset_picking_state,
+        )
+        self._current_popup.show()
+
+    # ── Camera controls (spin_camera copied verbatim from repo_vis) ─────────
+
+    def reset_camera(self) -> None:
+        """Reset the camera to default XY view."""
+        self.vtk_plotter.view_xy(render=False)
+        self.plotter.camera.focal_point = [0, 0, 0]
+        self.visualizer.status = "View reset."
+
+    def spin_camera(self) -> None:
+        """
+        Animate the camera spinning around the scene.
+        Copied from ``MainWindow.spin_camera`` in *repo_vis*.
+        """
+        spins, fps, dpf = 2, 30, 2
+        n_pts = int(360 / dpf)
+        center = np.array([0.0, 0.0, 0.0])
+        up = np.array([0.0, 1.0, 0.0])
+
+        current = np.array(self.plotter.camera_position[0])
+        radius = np.linalg.norm(current - center)
+        theta = np.linspace(0, 2 * np.pi, n_pts)
+        path = np.c_[radius * np.cos(theta), np.zeros(n_pts), radius * np.sin(theta)]
+
+        self.current_frame, self.spin_count = 0, 0
+        self.visualizer.status = "Spinning camera..."
+
+        def update_camera():
+            if self.current_frame < len(path):
+                self.plotter.camera_position = [path[self.current_frame], center, up]
+                if self.current_frame < len(path) - 1:
+                    self.current_frame += 1
+                self.plotter.render()
+            else:
+                self.current_frame = 0
+                self.spin_count += 1
+                if self.spin_count >= spins:
+                    stop_timer()
+
+        def stop_timer():
+            self.timer.stop()
+            self.update_status_display("Spin complete.")
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(update_camera)
+        self.timer.start(int(1000 / fps / 2))
+        QTimer.singleShot(int(spins / 1 * 1000 * 2), stop_timer)
+
+    # ── Save ────────────────────────────────────────────────────────────────
+
+    def save_current_view(self) -> None:
+        """
+        Save the current visualization to a file.
+        Adapted from ``MainWindow.save_current_view`` in *repo_vis*.
+        """
+        save_path = Path(self.visualizer.save_path)
+        fmt = self.visualizer.save_format
+        if save_path.suffix.lstrip(".") != fmt:
+            save_path = save_path.with_suffix(f".{fmt}")
+
+        self.visualizer.status = f"Saving to {save_path}…"
+        QApplication.processEvents()
+
+        try:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            if fmt == "html":
+                self.plotter.export_html(str(save_path))
+            else:
+                self.plotter.screenshot(str(save_path))
+            self.visualizer.status = f"Saved → {save_path}"
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.visualizer.status = f"Error saving: {exc}"
+
+    # ── Status display (mirrors repo_vis update_status_display) ────────────
+
+    def on_status_change(self, event: param.Event) -> None:
+        """Forward param status change to the Qt signal."""
+        self.status_changed.emit(event.new)
+        QApplication.processEvents()
+
+    def update_status_display(self, status: str) -> None:
+        """Render status text with colour coding (mirrors repo_vis)."""
+        if status.startswith("Error"):
+            html = f"<span style='color:#E53935;font-size:13px;'><b>Error:</b> {status[6:]}</span>"
+        elif "Rendering" in status or "Loading" in status or "Saving" in status or "Spinning" in status:
+            html = f"<span style='color:#42A5F5;font-size:13px;'><b>⏳ {status}</b></span>"
+        elif "Loaded" in status or "Saved" in status or "complete" in status.lower():
+            html = f"<span style='color:#66BB6A;font-size:13px;'><b>✓ {status}</b></span>"
+        elif "Ready" in status or "reset" in status.lower() or "Spin complete" in status:
+            html = f"<span style='color:#66BB6A;font-size:13px;'><b>⚡ Ready</b></span>"
+        else:
+            html = f"<span style='font-size:13px;'>{status}</span>"
+        self.status_display.setText(html)
+
+    # ── Reset settings ──────────────────────────────────────────────────────
+
+    def reset_settings(self) -> None:
+        """Reset all controls to defaults and clear the scene."""
+        self.module_selector.clearSelection()
+        self.cb_methods.setChecked(True)
+        self.cb_symbols.setChecked(False)
+        self.cb_contains.setChecked(False)
+        self.cb_calls.setChecked(True)
+        self.cb_imports.setChecked(True)
+        self.cb_inherits.setChecked(True)
+        self.reset_camera()
+        self.visualizer.status = "Ready"
+
+    # ── Cleanup / close (copied from repo_vis) ──────────────────────────────
+
+    def cleanup_pyvista_objects(self) -> None:
+        """Thorough PyVista cleanup to prevent errors on exit."""
+        if self._current_popup and hasattr(self._current_popup, "isVisible"):
+            try:
+                self._current_popup.close()
+            except Exception:
+                pass
+            self._current_popup = None
+
+        if hasattr(self, "plotter") and self.plotter:
+            try:
+                if hasattr(self.plotter, "clear_actors"): self.plotter.clear_actors()
+                if hasattr(self.plotter, "clear"):        self.plotter.clear()
+                if hasattr(self.plotter, "close"):        self.plotter.close()
+                self.visualizer.plotter = None
+                self.plotter = None
+                self.vtk_plotter = None
+            except Exception:
+                pass
+        gc.collect()
+
+    def closeEvent(self, event) -> None:
+        """Handle window close with cleanup."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                self.cleanup_pyvista_objects()
+            except Exception:
+                pass
+        event.accept()
+
+    def run(self) -> None:
+        """Start the Qt event loop and show the window."""
+        app = QApplication.instance() or QApplication(sys.argv)
+        self.show()
+        try:
+            app.exec()
+        except Exception as exc:
+            logger.error("Application error: %s", exc)
+        finally:
+            sys.exit()
+
+
+# ---------------------------------------------------------------------------
+# Atexit cleanup
+# ---------------------------------------------------------------------------
+
+atexit.register(gc.collect)
+
+
+# ---------------------------------------------------------------------------
+# launch() — convenience entry point used by codekg_viz3d.py CLI
 # ---------------------------------------------------------------------------
 
 
 def launch(
-    db_path: str | Path = ".codekg/graph.sqlite",
+    db_path: str = DEFAULT_DB,
     layout_name: str = "allium",
-    show_contains: bool = False,
-    rels: Optional[Set[str]] = None,
-    export_html: Optional[str] = None,
-    export_png: Optional[str] = None,
+    width: int = 1400,
+    height: int = 900,
+    **_kwargs,
 ) -> None:
     """
-    Build and show the 3-D visualiser; optionally export without opening a window.
+    Create a :class:`QApplication`, open :class:`MainWindow`, and run the event loop.
 
     :param db_path: Path to the SQLite database.
     :param layout_name: ``"allium"`` or ``"cake"``.
-    :param show_contains: Render CONTAINS edges.
-    :param rels: Edge relation types to render (default: CALLS, IMPORTS, INHERITS).
-    :param export_html: If set, export to this HTML path and exit.
-    :param export_png: If set, save a PNG to this path (window stays open).
+    :param width: Initial window width.
+    :param height: Initial window height.
     """
-    from code_kg.layout3d import AlliumLayout, LayerCakeLayout
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setApplicationName("codekg-viz3d")
 
-    layout_map = {
-        "allium": AlliumLayout(),
-        "cake": LayerCakeLayout(),
-    }
-    layout = layout_map.get(layout_name, AlliumLayout())
-
-    viz = KGViz3D(
+    win = MainWindow(
         db_path=db_path,
-        layout=layout,
-        rel_filter=rels or {"CALLS", "IMPORTS", "INHERITS"},
-        show_contains=show_contains,
+        save_path=Path(db_path).stem,
+        width=width,
+        height=height,
     )
-    viz.build()
-
-    if export_html:
-        viz.export_html(export_html)
-    if export_png:
-        viz.export_png(export_png)
-    if not export_html:
-        viz.show()
+    win.visualizer.layout_name = layout_name
+    win.layout_select.setCurrentText(layout_name)
+    win.show()
+    sys.exit(app.exec())
