@@ -149,7 +149,7 @@ runs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install "code-kg>=0.3.2"
+        pip install "git+https://github.com/Flux-Frontiers/code_kg.git"
 
     # ------------------------------------------------------------------
     # 5. Build SQLite graph  (skip when cache was restored)

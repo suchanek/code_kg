@@ -251,7 +251,7 @@ Steps 1 and 2 are skipped on cache hit. Step 3 always runs.
 ## Requirements
 
 - Python >=3.10, <3.13
-- `code-kg>=0.3.2` (installed automatically)
+- `code-kg` from the repository (installed automatically from GitHub)
 - `ubuntu-latest`, `macos-latest`, or `windows-latest` runner
 
 ---
