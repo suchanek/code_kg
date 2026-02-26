@@ -53,8 +53,21 @@ rich = "^14.3.3"
 version = ">=1.0.0"
 optional = true
 
+[tool.poetry.dependencies.pyvista]
+version = ">=0.44.0"
+optional = true
+
+[tool.poetry.dependencies.pyvistaqt]
+version = ">=0.11.0"
+optional = true
+
+[tool.poetry.dependencies.PyQt5]
+version = ">=5.15.0"
+optional = true
+
 [tool.poetry.extras]
-mcp = ["mcp"]
+mcp   = ["mcp"]
+viz3d = ["pyvista", "pyvistaqt", "PyQt5"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
@@ -73,6 +86,7 @@ codekg-pack          = "code_kg.codekg_snippet_packer:main"
 codekg-viz           = "code_kg.codekg_viz:main"
 codekg-mcp           = "code_kg.mcp_server:main"
 codekg-analyze       = "code_kg.codekg_thorough_analysis:cli"
+codekg-viz3d         = "code_kg.codekg_viz3d:main"
 
 [tool.ruff]
 line-length = 100
