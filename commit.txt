@@ -1,11 +1,3 @@
-feat: add GitHub Actions integration and enhanced report metadata
+feat(viz3d): enhance 3D graph visualization with geometry and node sizing
 
-- Add `.github/actions/codekg-action/` composite action for automated CodeKG analysis on PRs and pushes to main
-- Implement `_get_report_metadata()` to include generation timestamp, version, commit SHA, and branch in reports
-- Upgrade all datetime handling to UTC with `datetime.datetime.now(datetime.timezone.utc)`
-- Enhance CLI error handling with try-except and explicit exit codes
-- Update project description in pyproject.toml
-- Add new GitHub workflow job `codekg-analysis` that integrates the action with caching and artifact upload
-
-This enables zero-setup, automatic code graph analysis on every PR and main push, with metadata tracking
-for audit and debugging purposes.
+Add ground plane and cake stand geometry to create_kg_visualization() for better visual context. Double all node sizes for improved visibility (module: 0.6→1.2, class: 0.45→0.9, function: 0.35→0.7, method: 0.25→0.5, symbol: 0.2→0.4). Increase LayerCakeLayout disc radius from 18.0 to 28.0 for better node spacing. Darken CONTAINS edge color (#BDC3C7→#555555). Remove unused QTimer import and "Spin" button reference. Add trame-vtk optional dependency and jupyter extras to pyvista. Update code formatting to ruff standards.

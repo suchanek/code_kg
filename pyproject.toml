@@ -56,6 +56,7 @@ optional = true
 [tool.poetry.dependencies.pyvista]
 version = ">=0.44.0"
 optional = true
+extras = ["jupyter"]
 
 [tool.poetry.dependencies.pyvistaqt]
 version = ">=0.11.0"
@@ -73,9 +74,13 @@ optional = true
 version = ">=3.6"
 optional = true
 
+[tool.poetry.dependencies.trame-vtk]
+version = ">=2.0.0"
+optional = true
+
 [tool.poetry.extras]
 mcp   = ["mcp"]
-viz3d = ["pyvista", "pyvistaqt", "PyQt5", "param", "markdown"]
+viz3d = ["pyvista", "pyvistaqt", "PyQt5", "param", "markdown", "trame-vtk"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"

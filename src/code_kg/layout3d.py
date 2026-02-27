@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -36,8 +35,8 @@ import numpy as np
 def fibonacci_sphere(
     samples: int,
     radius: float = 1.0,
-    center: Optional[np.ndarray] = None,
-) -> List[np.ndarray]:
+    center: np.ndarray | None = None,
+) -> list[np.ndarray]:
     """
     Distribute *samples* points uniformly on a sphere using the Fibonacci spiral.
 
@@ -56,7 +55,7 @@ def fibonacci_sphere(
         return [center + radius * np.array([0.0, 0.0, 1.0])]
 
     phi = np.pi * (3.0 - np.sqrt(5.0))  # golden angle in radians
-    points: List[np.ndarray] = []
+    points: list[np.ndarray] = []
     for i in range(samples):
         y = 1.0 - (i / float(samples - 1)) * 2.0
         r_at_y = np.sqrt(max(0.0, 1.0 - y * y))
@@ -71,9 +70,9 @@ def fibonacci_annulus(
     samples: int,
     inner_radius: float = 1.0,
     outer_radius: float = 2.0,
-    center: Optional[np.ndarray] = None,
+    center: np.ndarray | None = None,
     z_thickness: float = 0.2,
-) -> List[np.ndarray]:
+) -> list[np.ndarray]:
     """
     Distribute *samples* points in a flat annular ring in the XY plane.
 
@@ -100,7 +99,7 @@ def fibonacci_annulus(
     r_step = r_range / max(samples - 1, 1)
     rng = np.random.default_rng(42)  # deterministic jitter seed
 
-    points: List[np.ndarray] = []
+    points: list[np.ndarray] = []
     for i in range(samples):
         r = inner_radius + i * r_step
         theta = phi * i
@@ -114,9 +113,9 @@ def fibonacci_annulus(
 def _golden_spiral_2d(
     samples: int,
     radius: float = 1.0,
-    center: Optional[np.ndarray] = None,
+    center: np.ndarray | None = None,
     z: float = 0.0,
-) -> List[np.ndarray]:
+) -> list[np.ndarray]:
     """
     Place *samples* points in the XY plane using a golden-angle disc spiral.
 
@@ -132,7 +131,7 @@ def _golden_spiral_2d(
         return []
 
     phi = np.pi * (3.0 - np.sqrt(5.0))
-    points: List[np.ndarray] = []
+    points: list[np.ndarray] = []
     for i in range(samples):
         r = radius * np.sqrt(i / max(samples - 1, 1))
         theta = phi * i
@@ -165,10 +164,10 @@ class LayoutNode:
     id: str
     kind: str
     name: str
-    module_path: Optional[str] = None
-    docstring: Optional[str] = None
-    lineno: Optional[int] = None
-    end_lineno: Optional[int] = None
+    module_path: str | None = None
+    docstring: str | None = None
+    lineno: int | None = None
+    end_lineno: int | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> LayoutNode:
@@ -240,9 +239,9 @@ class Layout3D(ABC):
     @abstractmethod
     def compute(
         self,
-        nodes: List[LayoutNode],
-        edges: List[LayoutEdge],
-    ) -> Dict[str, np.ndarray]:
+        nodes: list[LayoutNode],
+        edges: list[LayoutEdge],
+    ) -> dict[str, np.ndarray]:
         """
         Compute 3-D positions for all *nodes*.
 
@@ -310,9 +309,9 @@ class AlliumLayout(Layout3D):
 
     def compute(
         self,
-        nodes: List[LayoutNode],
-        edges: List[LayoutEdge],
-    ) -> Dict[str, np.ndarray]:
+        nodes: list[LayoutNode],
+        edges: list[LayoutEdge],
+    ) -> dict[str, np.ndarray]:
         """
         Compute allium-plant 3-D positions for all nodes.
 
@@ -321,15 +320,15 @@ class AlliumLayout(Layout3D):
         :return: Mapping from node ID to ``[x, y, z]`` position.
         """
         # Build CONTAINS hierarchy: child_id -> parent_id, parent_id -> [child_ids]
-        parent: Dict[str, str] = {}
-        children: Dict[str, List[str]] = {}
+        parent: dict[str, str] = {}
+        children: dict[str, list[str]] = {}
         for e in edges:
             if e.rel == "CONTAINS":
                 parent[e.dst] = e.src
                 children.setdefault(e.src, []).append(e.dst)
 
-        node_by_id: Dict[str, LayoutNode] = {n.id: n for n in nodes}
-        positions: Dict[str, np.ndarray] = {}
+        node_by_id: dict[str, LayoutNode] = {n.id: n for n in nodes}
+        positions: dict[str, np.ndarray] = {}
 
         # Module nodes form the allium stems
         modules = [n for n in nodes if n.kind == "module"]
@@ -385,9 +384,7 @@ class AlliumLayout(Layout3D):
         # Orphan nodes: anything not yet placed (symbols, unrooted nodes)
         orphans = [n for n in nodes if n.id not in positions]
         if orphans:
-            orphan_positions = fibonacci_sphere(
-                len(orphans), radius=3.0, center=np.zeros(3)
-            )
+            orphan_positions = fibonacci_sphere(len(orphans), radius=3.0, center=np.zeros(3))
             for n, pos in zip(orphans, orphan_positions):
                 positions[n.id] = np.array(pos)
 
@@ -399,7 +396,7 @@ class AlliumLayout(Layout3D):
 # ---------------------------------------------------------------------------
 
 # Z level per node kind
-_KIND_ZLEVEL: Dict[str, int] = {
+_KIND_ZLEVEL: dict[str, int] = {
     "module": 0,
     "class": 1,
     "function": 2,
@@ -430,7 +427,7 @@ class LayerCakeLayout(Layout3D):
     def __init__(
         self,
         layer_gap: float = 12.0,
-        disc_radius: float = 18.0,
+        disc_radius: float = 28.0,
     ) -> None:
         """Initialise layout parameters.
 
@@ -442,9 +439,9 @@ class LayerCakeLayout(Layout3D):
 
     def compute(
         self,
-        nodes: List[LayoutNode],
-        edges: List[LayoutEdge],
-    ) -> Dict[str, np.ndarray]:
+        nodes: list[LayoutNode],
+        edges: list[LayoutEdge],
+    ) -> dict[str, np.ndarray]:
         """
         Compute layer-cake 3-D positions for all nodes.
 
@@ -453,12 +450,12 @@ class LayerCakeLayout(Layout3D):
         :return: Mapping from node ID to ``[x, y, z]`` position.
         """
         # Group nodes by Z layer
-        layers: Dict[int, List[LayoutNode]] = {}
+        layers: dict[int, list[LayoutNode]] = {}
         for n in nodes:
             level = _KIND_ZLEVEL.get(n.kind, 3)
             layers.setdefault(level, []).append(n)
 
-        positions: Dict[str, np.ndarray] = {}
+        positions: dict[str, np.ndarray] = {}
         n_total = max(len(nodes), 1)
 
         for level, layer_nodes in layers.items():

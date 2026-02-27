@@ -6,7 +6,7 @@ Adapted from *repo_vis/pkg_visualizer/pkg_visualizer.py*
 
 Window layout mirrors repo_vis exactly:
   Left  — control panel (DB path, layout selector, module filter, render options)
-  Right — PyVista QtInteractor + button row (Spin, Reset View, Reset Settings, status)
+  Right — PyVista QtInteractor + button row (Reset View, Reset Settings, status)
 
 Pick any node to open a modeless docstring popup; the picked node is
 highlighted in pink and the camera zooms in, exactly as in repo_vis.
@@ -22,17 +22,15 @@ import atexit
 import gc
 import logging
 import sys
-import time
 import warnings
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import param
 import pyvista as pv
-from markdown import markdown
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from markdown import markdown  # type: ignore[import-untyped]
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication,
@@ -75,31 +73,34 @@ BUTTON_WIDTH: int = 120
 ZOOM_FACTOR: float = 10.0
 
 # Node colours (aligned with app.py pyvis visualiser)
-KIND_COLOR: Dict[str, str] = {
-    "module":   "#4A90D9",
-    "class":    "#27AE60",
+KIND_COLOR: dict[str, str] = {
+    "module": "#4A90D9",
+    "class": "#27AE60",
     "function": "#E74C3C",
-    "method":   "#3498DB",
-    "symbol":   "#95A5A6",
+    "method": "#3498DB",
+    "symbol": "#95A5A6",
 }
 
 # Node sizes (radius)
-KIND_SIZE: Dict[str, float] = {
-    "module": 0.60, "class": 0.45, "function": 0.35,
-    "method": 0.25, "symbol": 0.20,
+KIND_SIZE: dict[str, float] = {
+    "module": 1.2,
+    "class": 0.9,
+    "function": 0.7,
+    "method": 0.5,
+    "symbol": 0.4,
 }
 
 # Edge colours
-REL_COLOR: Dict[str, str] = {
-    "CONTAINS": "#BDC3C7",
-    "CALLS":    "#E74C3C",
-    "IMPORTS":  "#3498DB",
+REL_COLOR: dict[str, str] = {
+    "CONTAINS": "#555555",
+    "CALLS": "#E74C3C",
+    "IMPORTS": "#3498DB",
     "INHERITS": "#F39C12",
 }
 
 # LOD thresholds (total visible nodes)
-LOD_HIGH: int = 400    # icospheres / cylinders
-LOD_LOW: int  = 1500   # cubes; above → small spheres
+LOD_HIGH: int = 400  # icospheres / cylinders
+LOD_LOW: int = 1500  # cubes; above → small spheres
 
 # ---------------------------------------------------------------------------
 # Internal geometry helpers
@@ -119,32 +120,43 @@ def _make_node_mesh(kind: str, center: np.ndarray, size: float, lod: str):
     if lod == "high":
         if kind == "module":
             h = size * 0.9
-            return pv.Box(bounds=(
-                center[0] - h, center[0] + h,
-                center[1] - h, center[1] + h,
-                center[2] - h, center[2] + h,
-            ))
+            return pv.Box(
+                bounds=(
+                    center[0] - h,
+                    center[0] + h,
+                    center[1] - h,
+                    center[1] + h,
+                    center[2] - h,
+                    center[2] + h,
+                )
+            )
         elif kind == "function":
             return pv.Cylinder(
-                center=center, direction=(0, 0, 1),
-                radius=size * 0.6, height=size * 1.4, resolution=12,
+                center=center,
+                direction=(0, 0, 1),
+                radius=size * 0.6,
+                height=size * 1.4,
+                resolution=12,
             )
         else:
-            return pv.Icosahedron(radius=size, nsub=1, center=center)
+            return pv.Icosahedron(radius=size, center=center)
     elif lod == "low":
         h = size * 0.9
-        return pv.Box(bounds=(
-            center[0] - h, center[0] + h,
-            center[1] - h, center[1] + h,
-            center[2] - h, center[2] + h,
-        ))
+        return pv.Box(
+            bounds=(
+                center[0] - h,
+                center[0] + h,
+                center[1] - h,
+                center[1] + h,
+                center[2] - h,
+                center[2] + h,
+            )
+        )
     else:
-        return pv.Sphere(radius=size * 0.5, center=center,
-                         theta_resolution=4, phi_resolution=4)
+        return pv.Sphere(radius=size * 0.5, center=center, theta_resolution=4, phi_resolution=4)
 
 
-def _arc_points(p1: np.ndarray, p2: np.ndarray,
-                n_pts: int = 24, lift: float = 0.35) -> np.ndarray:
+def _arc_points(p1: np.ndarray, p2: np.ndarray, n_pts: int = 24, lift: float = 0.35) -> np.ndarray:
     """
     Quadratic Bézier arc from *p1* to *p2*, apex lifted ``lift × chord`` in Z.
 
@@ -161,7 +173,7 @@ def _arc_points(p1: np.ndarray, p2: np.ndarray,
     return (1 - t) ** 2 * p1 + 2 * t * (1 - t) * mid + t**2 * p2
 
 
-def _docstring_to_markdown(docstring: Optional[str]) -> str:
+def _docstring_to_markdown(docstring: str | None) -> str:
     """
     Convert a ``:param:``-style docstring to Markdown.
     Adapted from ``utility.format_docstring_to_markdown`` in *repo_vis*.
@@ -170,10 +182,11 @@ def _docstring_to_markdown(docstring: Optional[str]) -> str:
     :return: Markdown-formatted string.
     """
     import re
+
     if not docstring:
         return "No docstring available."
     lines = docstring.strip().split("\n")
-    md: List[str] = [f"# {lines[0]}"]
+    md: list[str] = [f"# {lines[0]}"]
     for line in lines[1:]:
         line = line.strip()
         if line.startswith(":type") or line.startswith(":rtype"):
@@ -192,7 +205,7 @@ def _remove_highlight_actors(plotter: pv.Plotter) -> None:
     """Remove any leftover pink highlight or outline actors from the plotter."""
     for name in list(plotter.actors.keys()):
         if "highlight" in name.lower() or "bounds" in name.lower() or "outline" in name.lower():
-            plotter.remove_actor(name, reset_camera=False)
+            plotter.remove_actor(name, reset_camera=False)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +220,7 @@ class DocstringPopup(QDialog):
     (Eric G. Suchanek, PhD).
     """
 
-    def __init__(self, title: str, docstring: str, parent=None,
-                 on_close_callback=None):
+    def __init__(self, title: str, docstring: str, parent=None, on_close_callback=None):
         """
         Initialise the popup window.
 
@@ -221,7 +233,7 @@ class DocstringPopup(QDialog):
         self.setWindowTitle(title)
         self.setMinimumSize(600, 400)
         self.on_close_callback = on_close_callback
-        self.setWindowModality(Qt.NonModal)
+        self.setWindowModality(Qt.NonModal)  # type: ignore[attr-defined]
 
         if parent:
             geo = parent.screen().geometry()
@@ -234,7 +246,7 @@ class DocstringPopup(QDialog):
         layout.addWidget(browser)
 
         close_btn = QPushButton("Close", self)
-        close_btn.clicked.connect(self.close)
+        close_btn.clicked.connect(self.close)  # type: ignore[arg-type]
         layout.addWidget(close_btn)
 
     def closeEvent(self, event):
@@ -250,11 +262,11 @@ class DocstringPopup(QDialog):
 
 
 def create_kg_visualization(
-    viz: "KGVisualizer",
+    viz: KGVisualizer,
     nodes,
     edges,
     plotter: pv.Plotter,
-) -> Tuple[pv.Plotter, str, Dict[str, dict]]:
+) -> tuple[pv.Plotter, str, dict[str, dict]]:
     """
     Render the knowledge graph into *plotter* using the current layout.
 
@@ -275,35 +287,70 @@ def create_kg_visualization(
     QApplication.processEvents()
 
     plotter.clear_actors()
-    plotter.remove_all_lights()
     plotter.enable_anti_aliasing("msaa")
-    plotter.add_axes()
+    plotter.set_background("white", top="lightblue")  # type: ignore[arg-type]
+    plotter.add_axes()  # type: ignore[call-arg]
 
-    for pos in [(0, 0, 100), (0, 100, 0), (0, 0, -100)]:
-        plotter.add_light(pv.Light(position=pos, color="white",
-                                   light_type="scene light"))
+    # Add ground plane
+    ground_size = 300
+    ground = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1), i_size=ground_size, j_size=ground_size)
+    plotter.add_mesh(ground, color="lightgray", opacity=1.0, name="ground")
+
+    # Add cake stand (cylinder base + disk platform)
+    stand_height = 20
+    stand_radius = 80
+    cylinder = pv.Cylinder(
+        center=(0, 0, stand_height / 2),
+        direction=(0, 0, 1),
+        radius=8,
+        height=stand_height,
+        resolution=32,
+    )
+    plotter.add_mesh(cylinder, color="tan", opacity=1.0, smooth_shading=True, name="stand_cylinder")
+
+    platform = pv.Cylinder(
+        center=(0, 0, stand_height + 2),
+        direction=(0, 0, 1),
+        radius=stand_radius,
+        height=4,
+        resolution=32,
+    )
+    plotter.add_mesh(
+        platform, color="burlywood", opacity=1.0, smooth_shading=True, name="stand_disk"
+    )
 
     # -- Layout
-    layout = AlliumLayout() if viz.layout_name == "allium" else LayerCakeLayout()
+    layout = (
+        AlliumLayout()
+        if viz.layout_name == "allium"
+        else LayerCakeLayout(disc_radius=150.0, layer_gap=20.0)
+    )
     # Always compute on ALL nodes for stable positions; filtering happens in display
-    from code_kg.layout3d import LayoutEdge as LE
+
     all_nodes_for_layout = viz.nodes  # full set for stable layout
     all_edges_for_layout = viz.edges
     positions = layout.compute(all_nodes_for_layout, all_edges_for_layout)
+
+    # Lift all nodes to sit on top of the cake stand platform
+    # Platform is centered at (0, 0, stand_height + 2) with height 4, so top is at stand_height + 4
+    platform_top = stand_height + 4
+    for node_id in positions:
+        pos = positions[node_id]
+        positions[node_id] = np.array([pos[0], pos[1], pos[2] + platform_top])
 
     # -- LOD tier
     n_visible = len(nodes)
     lod = "high" if n_visible <= LOD_HIGH else "low" if n_visible <= LOD_LOW else "points"
 
     # -- Build per-kind MultiBlocks
-    kind_blocks: Dict[str, pv.MultiBlock] = {k: pv.MultiBlock() for k in KIND_SIZE}
-    actor_to_node: Dict[str, dict] = {}
-    kind_counters: Dict[str, int] = {k: 0 for k in KIND_SIZE}
+    kind_blocks: dict[str, pv.MultiBlock] = {k: pv.MultiBlock() for k in KIND_SIZE}
+    actor_to_node: dict[str, dict] = {}
+    kind_counters: dict[str, int] = {k: 0 for k in KIND_SIZE}
 
     node_id_set = {n.id for n in nodes}
 
     for node in nodes:
-        pos = positions.get(node.id)
+        pos = positions.get(node.id)  # type: ignore[assignment]
         if pos is None:
             continue
         kind = node.kind
@@ -340,22 +387,27 @@ def create_kg_visualization(
     # -- Add node MultiBlocks
     for kind, block in kind_blocks.items():
         if block.n_blocks > 0:
+            # Only apply smooth shading to cylinders (function nodes)
             plotter.add_mesh(
                 block,
                 color=KIND_COLOR[kind],
                 show_edges=False,
-                smooth_shading=(lod == "high"),
+                smooth_shading=(kind == "function"),
                 name=f"{kind}_nodes",
             )
 
     # -- Edge rendering
     rel_to_show = set()
-    if viz.show_calls:    rel_to_show.add("CALLS")
-    if viz.show_imports:  rel_to_show.add("IMPORTS")
-    if viz.show_inherits: rel_to_show.add("INHERITS")
-    if viz.show_contains: rel_to_show.add("CONTAINS")
+    if viz.show_calls:
+        rel_to_show.add("CALLS")
+    if viz.show_imports:
+        rel_to_show.add("IMPORTS")
+    if viz.show_inherits:
+        rel_to_show.add("INHERITS")
+    if viz.show_contains:
+        rel_to_show.add("CONTAINS")
 
-    rel_blocks: Dict[str, pv.MultiBlock] = {r: pv.MultiBlock() for r in rel_to_show}
+    rel_blocks: dict[str, pv.MultiBlock] = {r: pv.MultiBlock() for r in rel_to_show}
 
     viz.status = "Rendering edges..."
     QApplication.processEvents()
@@ -381,8 +433,9 @@ def create_kg_visualization(
             plotter.add_mesh(
                 block,
                 color=REL_COLOR[rel],
-                line_width=0.5 if is_contains else 1.5,
-                opacity=0.25 if is_contains else 0.70,
+                line_width=4.0 if is_contains else 2.5,
+                opacity=0.5 if is_contains else 1.0,
+                smooth_shading=True,
                 name=f"{rel.lower()}_edges",
             )
 
@@ -392,7 +445,7 @@ def create_kg_visualization(
         for i in range(block.n_blocks):
             mesh = block[i]
             if hasattr(mesh, "n_faces_strict"):
-                total_faces += mesh.n_faces_strict
+                total_faces += mesh.n_faces_strict  # type: ignore[union-attr]
     viz.num_faces = total_faces
 
     title = (
@@ -402,9 +455,10 @@ def create_kg_visualization(
         f"Faces: {total_faces}"
     )
 
-    plotter.view_xy()
-    plotter.reset_camera()
+    plotter.reset_camera()  # type: ignore[call-arg]
+    plotter.view_isometric()  # type: ignore[call-arg]
     plotter.render()
+    plotter.camera.zoom(3)
 
     viz.status = "Scene generation complete."
     QApplication.processEvents()
@@ -427,39 +481,41 @@ class KGVisualizer(param.Parameterized):
     """
 
     db_path: str = param.String(default=DEFAULT_DB, doc="SQLite database path")
-    layout_name: str = param.Selector(objects=["allium", "cake"], default="allium",
-                                      doc="3-D layout strategy")
+    layout_name: str = param.Selector(
+        objects=["allium", "cake"], default="allium", doc="3-D layout strategy"
+    )
     save_path: str = param.String(default=DEFAULT_SAVE, doc="Save path stem")
-    save_format: str = param.Selector(objects=["html", "png", "jpg"],
-                                      default="html", doc="Export format")
+    save_format: str = param.Selector(
+        objects=["html", "png", "jpg"], default="html", doc="Export format"
+    )
 
     # Node kind visibility
-    show_methods: bool  = param.Boolean(default=True,  doc="Render method nodes")
-    show_symbols: bool  = param.Boolean(default=False, doc="Render symbol stub nodes")
+    show_methods: bool = param.Boolean(default=True, doc="Render method nodes")
+    show_symbols: bool = param.Boolean(default=False, doc="Render symbol stub nodes")
     # Edge visibility
-    show_calls:    bool = param.Boolean(default=True,  doc="Render CALLS edges")
-    show_imports:  bool = param.Boolean(default=True,  doc="Render IMPORTS edges")
-    show_inherits: bool = param.Boolean(default=True,  doc="Render INHERITS edges")
-    show_contains: bool = param.Boolean(default=False, doc="Render CONTAINS edges")
+    show_calls: bool = param.Boolean(default=True, doc="Render CALLS edges")
+    show_imports: bool = param.Boolean(default=True, doc="Render IMPORTS edges")
+    show_inherits: bool = param.Boolean(default=True, doc="Render INHERITS edges")
+    show_contains: bool = param.Boolean(default=True, doc="Render CONTAINS edges")
 
     # Status / title
-    status: str       = param.String(default="Ready", doc="Status bar text")
-    window_title: str = param.String(default=f"CodeKG 3D v{__version__}",
-                                     doc="Window title")
+    status: str = param.String(default="Ready", doc="Status bar text")
+    window_title: str = param.String(default=f"CodeKG 3D v{__version__}", doc="Window title")
 
     # Stats
-    num_modules:   int = param.Integer(default=0)
-    num_classes:   int = param.Integer(default=0)
+    num_modules: int = param.Integer(default=0)
+    num_classes: int = param.Integer(default=0)
     num_functions: int = param.Integer(default=0)
-    num_methods:   int = param.Integer(default=0)
-    num_faces:     int = param.Integer(default=0)
+    num_methods: int = param.Integer(default=0)
+    num_faces: int = param.Integer(default=0)
 
     # Module selector data
-    available_modules: List[str] = param.List(default=[], doc="Available module names")
-    selected_modules:  List[str] = param.ListSelector(default=[], objects=[],
-                                                       doc="Selected module names")
+    available_modules: list[str] = param.List(default=[], doc="Available module names")
+    selected_modules: list[str] = param.ListSelector(
+        default=[], objects=[], doc="Selected module names"
+    )
 
-    def __init__(self, plotter: Optional[pv.Plotter] = None, **params) -> None:
+    def __init__(self, plotter: pv.Plotter | None = None, **params) -> None:
         """
         Initialise the visualiser data model.
 
@@ -467,10 +523,10 @@ class KGVisualizer(param.Parameterized):
         :param params: Additional ``param`` keyword arguments.
         """
         super().__init__(**params)
-        self.plotter: Optional[pv.Plotter] = plotter
-        self.nodes: List = []
-        self.edges: List = []
-        self.actor_to_node: Dict[str, dict] = {}
+        self.plotter: pv.Plotter | None = plotter
+        self.nodes: list = []
+        self.edges: list = []
+        self.actor_to_node: dict[str, dict] = {}
         self._load_graph()
 
     @param.depends("db_path", watch=True)
@@ -496,10 +552,10 @@ class KGVisualizer(param.Parameterized):
         self.edges = [LayoutEdge.from_dict(e) for e in raw_edges]
 
         counts = Counter(n.kind for n in self.nodes)
-        self.num_modules   = counts.get("module", 0)
-        self.num_classes   = counts.get("class", 0)
+        self.num_modules = counts.get("module", 0)
+        self.num_classes = counts.get("class", 0)
         self.num_functions = counts.get("function", 0)
-        self.num_methods   = counts.get("method", 0)
+        self.num_methods = counts.get("method", 0)
 
         mod_names = sorted(n.name for n in self.nodes if n.kind == "module")
         self.available_modules = mod_names
@@ -511,9 +567,7 @@ class KGVisualizer(param.Parameterized):
             f"Modules: {self.num_modules}  Classes: {self.num_classes}  "
             f"Methods: {self.num_methods}  Functions: {self.num_functions}"
         )
-        self.status = (
-            f"Loaded: {len(self.nodes)} nodes, {len(self.edges)} edges"
-        )
+        self.status = f"Loaded: {len(self.nodes)} nodes, {len(self.edges)} edges"
 
         if self.plotter and hasattr(self.plotter, "clear_actors"):
             self.plotter.clear_actors()
@@ -533,7 +587,7 @@ class KGVisualizer(param.Parameterized):
 
         # Apply module filter
         if self.selected_modules:
-            contains_children: Dict[str, List[str]] = {}
+            contains_children: dict[str, list[str]] = {}
             for e in self.edges:
                 if e.rel == "CONTAINS":
                     contains_children.setdefault(e.src, []).append(e.dst)
@@ -555,8 +609,7 @@ class KGVisualizer(param.Parameterized):
 
             # Respect show_methods / show_symbols
             visible_nodes = [
-                n for n in self.nodes
-                if n.id in in_scope and self._kind_visible(n.kind)
+                n for n in self.nodes if n.id in in_scope and self._kind_visible(n.kind)
             ]
         else:
             visible_nodes = [n for n in self.nodes if self._kind_visible(n.kind)]
@@ -572,8 +625,10 @@ class KGVisualizer(param.Parameterized):
 
     def _kind_visible(self, kind: str) -> bool:
         """Return ``True`` if nodes of this kind should be rendered."""
-        if kind == "method"  and not self.show_methods:  return False
-        if kind == "symbol"  and not self.show_symbols:  return False
+        if kind == "method" and not self.show_methods:
+            return False
+        if kind == "symbol" and not self.show_symbols:
+            return False
         return True
 
 
@@ -614,15 +669,13 @@ class MainWindow(QMainWindow):
 
         self.timer = None
         self.current_frame = 0
-        self.spin_count = 0
         self._current_picked_actor = None
-        self._current_popup: Optional[DocstringPopup] = None
+        self._current_popup: DocstringPopup | None = None
         self._original_camera_state = None
 
         self.setGeometry(100, 100, width, height)
 
-        pv.set_plot_theme("dark")
-        self.vtk_plotter: QtInteractor = QtInteractor(self, theme=pv._GlobalTheme())
+        self.vtk_plotter: QtInteractor = QtInteractor(self)
         self.visualizer: KGVisualizer = KGVisualizer(
             plotter=self.vtk_plotter,
             db_path=db_path,
@@ -637,24 +690,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
 
-        self.setStyleSheet("""
-            QWidget { font-family: Arial; font-size: 12px; }
-            QLineEdit, QComboBox, QListWidget, QCheckBox, QPushButton, QLabel
-                { margin: 2px; padding: 3px; }
-            QLineEdit, QComboBox, QListWidget
-                { border: 1px solid #555; border-radius: 3px; }
+        self.setStyleSheet(
+            """
             QPushButton { background-color: #4CAF50; color: white; border: none;
-                          border-radius: 3px; padding: 6px; }
+                          border-radius: 3px; padding: 6px; margin: 2px; }
             QPushButton#reset-view  { background-color: #FFEB3B; color: black; }
             QPushButton#reset-all   { background-color: #E53935; color: white; }
-            QPushButton#spin-btn    { background-color: #2196F3; color: white; }
-            QLabel { border: 1px solid #555; background-color: #2a2a2a;
-                     color: #e0e0e0; padding: 4px; }
-        """)
+            QPushButton { font-size: 12px; }
+        """
+        )
 
         # ── Left: control panel ─────────────────────────────────────────────
         ctrl = QVBoxLayout()
-        ctrl.setSpacing(5)
+        ctrl.setSpacing(12)
         ctrl.setContentsMargins(6, 6, 6, 6)
 
         def _h2(text: str) -> QLabel:
@@ -705,18 +753,24 @@ class MainWindow(QMainWindow):
         ctrl.addWidget(_h2("Render Options"))
 
         cb_row1 = QHBoxLayout()
-        self.cb_methods  = QCheckBox("Methods");  self.cb_methods.setChecked(self.visualizer.show_methods)
-        self.cb_symbols  = QCheckBox("Symbols");  self.cb_symbols.setChecked(self.visualizer.show_symbols)
-        self.cb_contains = QCheckBox("CONTAINS"); self.cb_contains.setChecked(self.visualizer.show_contains)
+        self.cb_methods = QCheckBox("Methods")
+        self.cb_methods.setChecked(self.visualizer.show_methods)
+        self.cb_symbols = QCheckBox("Symbols")
+        self.cb_symbols.setChecked(self.visualizer.show_symbols)
+        self.cb_contains = QCheckBox("CONTAINS")
+        self.cb_contains.setChecked(self.visualizer.show_contains)
         for w in (self.cb_methods, self.cb_symbols, self.cb_contains):
             cb_row1.addWidget(w)
         ctrl.addLayout(cb_row1)
 
         ctrl.addWidget(_lbl("<b>Edge Types</b>"))
         cb_row2 = QHBoxLayout()
-        self.cb_calls    = QCheckBox("CALLS");    self.cb_calls.setChecked(self.visualizer.show_calls)
-        self.cb_imports  = QCheckBox("IMPORTS");  self.cb_imports.setChecked(self.visualizer.show_imports)
-        self.cb_inherits = QCheckBox("INHERITS"); self.cb_inherits.setChecked(self.visualizer.show_inherits)
+        self.cb_calls = QCheckBox("CALLS")
+        self.cb_calls.setChecked(self.visualizer.show_calls)
+        self.cb_imports = QCheckBox("IMPORTS")
+        self.cb_imports.setChecked(self.visualizer.show_imports)
+        self.cb_inherits = QCheckBox("INHERITS")
+        self.cb_inherits.setChecked(self.visualizer.show_inherits)
         for w in (self.cb_calls, self.cb_imports, self.cb_inherits):
             cb_row2.addWidget(w)
         ctrl.addLayout(cb_row2)
@@ -725,20 +779,25 @@ class MainWindow(QMainWindow):
         ctrl.addWidget(_lbl("<b>Graph Statistics</b>"))
         self.stats_label = QLabel(self._stats_text())
         self.stats_label.setWordWrap(True)
+        self.stats_label.setStyleSheet(
+            "background-color:white; color:black; padding:5px; border-radius:3px;"
+        )
         ctrl.addWidget(self.stats_label)
 
         ctrl.addStretch()
 
         # Bottom buttons
-        btn_row1 = QHBoxLayout()
         self.visualize_button = QPushButton("Render Graph")
-        self.show_docstring_button = QPushButton("Show Docstring")
-        btn_row1.addWidget(self.visualize_button)
-        btn_row1.addWidget(self.show_docstring_button)
-        ctrl.addLayout(btn_row1)
+        self.visualize_button.setMinimumHeight(40)
+        self.visualize_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; }")
+        ctrl.addWidget(self.visualize_button)
 
+        btn_row1 = QHBoxLayout()
+        self.show_docstring_button = QPushButton("Show Docstring")
         self.save_button = QPushButton("Save View")
-        ctrl.addWidget(self.save_button)
+        btn_row1.addWidget(self.show_docstring_button)
+        btn_row1.addWidget(self.save_button)
+        ctrl.addLayout(btn_row1)
 
         # ── Right: viewport + button row ────────────────────────────────────
         vis = QVBoxLayout()
@@ -748,11 +807,6 @@ class MainWindow(QMainWindow):
         vis.addStretch()
 
         btn_row2 = QHBoxLayout()
-
-        self.button_spin = QPushButton("Spin")
-        self.button_spin.setObjectName("spin-btn")
-        self.button_spin.setFixedWidth(BUTTON_WIDTH)
-        btn_row2.addWidget(self.button_spin)
 
         self.reset_view_button = QPushButton("Reset View")
         self.reset_view_button.setObjectName("reset-view")
@@ -765,8 +819,10 @@ class MainWindow(QMainWindow):
         btn_row2.addWidget(self.reset_settings_button)
 
         self.status_display = QLabel("Ready")
-        self.status_display.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        self.status_display.setStyleSheet("font-weight:bold; font-size:13px;")
+        self.status_display.setTextInteractionFlags(Qt.TextBrowserInteraction)  # type: ignore[attr-defined]
+        self.status_display.setStyleSheet(
+            "font-weight:bold; font-size:13px; background-color:white; color:black;"
+        )
         btn_row2.addWidget(self.status_display, stretch=1)
 
         vis.addLayout(btn_row2)
@@ -806,20 +862,33 @@ class MainWindow(QMainWindow):
         self.db_path_input.editingFinished.connect(self.update_db_path)
         self.layout_select.currentTextChanged.connect(self.update_layout)
         self.save_path_input.textChanged.connect(lambda t: setattr(self.visualizer, "save_path", t))
-        self.save_format_select.currentTextChanged.connect(lambda t: setattr(self.visualizer, "save_format", t))
+        self.save_format_select.currentTextChanged.connect(
+            lambda t: setattr(self.visualizer, "save_format", t)
+        )
         self.module_selector.itemSelectionChanged.connect(self.update_selected_modules)
 
-        self.cb_methods.stateChanged.connect(lambda s: setattr(self.visualizer, "show_methods",  s == Qt.Checked))
-        self.cb_symbols.stateChanged.connect(lambda s: setattr(self.visualizer, "show_symbols",  s == Qt.Checked))
-        self.cb_contains.stateChanged.connect(lambda s: setattr(self.visualizer, "show_contains", s == Qt.Checked))
-        self.cb_calls.stateChanged.connect(lambda s: setattr(self.visualizer, "show_calls",    s == Qt.Checked))
-        self.cb_imports.stateChanged.connect(lambda s: setattr(self.visualizer, "show_imports",  s == Qt.Checked))
-        self.cb_inherits.stateChanged.connect(lambda s: setattr(self.visualizer, "show_inherits", s == Qt.Checked))
+        self.cb_methods.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_methods", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
+        self.cb_symbols.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_symbols", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
+        self.cb_contains.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_contains", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
+        self.cb_calls.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_calls", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
+        self.cb_imports.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_imports", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
+        self.cb_inherits.stateChanged.connect(
+            lambda s: setattr(self.visualizer, "show_inherits", s == Qt.Checked)  # type: ignore[attr-defined]
+        )
 
         self.visualize_button.clicked.connect(self.on_visualize_clicked)
         self.show_docstring_button.clicked.connect(self.show_selected_docstring)
         self.save_button.clicked.connect(self.save_current_view)
-        self.button_spin.clicked.connect(self.spin_camera)
         self.reset_view_button.clicked.connect(self.reset_camera)
         self.reset_settings_button.clicked.connect(self.reset_settings)
 
@@ -827,11 +896,17 @@ class MainWindow(QMainWindow):
         self.visualizer.param.watch(self.on_status_change, "status")
         self.visualizer.param.watch(self.update_module_selector, "available_modules")
         self.visualizer.param.watch(self.update_window_title, "window_title")
-        self.visualizer.param.watch(lambda e: self.stats_label.setText(self._stats_text()), "num_faces")
+        self.visualizer.param.watch(
+            lambda e: self.stats_label.setText(self._stats_text()), "num_faces"
+        )
 
         font = QFont("Arial", 12)
         self.setFont(font)
         self.resize(width, height)
+
+        # Perform initial render on launch
+        QApplication.processEvents()
+        self.on_visualize_clicked()
 
     # ── Stats helper ────────────────────────────────────────────────────────
 
@@ -976,10 +1051,10 @@ class MainWindow(QMainWindow):
         )
         self._current_picked_actor = self.plotter.actors.get("_kg_highlight")
 
-        self._original_camera_state = {
-            "position":    self.plotter.camera.position,
+        self._original_camera_state = {  # type: ignore[assignment]
+            "position": self.plotter.camera.position,
             "focal_point": self.plotter.camera.focal_point,
-            "view_up":     self.plotter.camera.up,
+            "view_up": self.plotter.camera.up,
         }
 
         self.plotter.camera.focal_point = np.array(mesh.center)
@@ -1034,49 +1109,14 @@ class MainWindow(QMainWindow):
     # ── Camera controls (spin_camera copied verbatim from repo_vis) ─────────
 
     def reset_camera(self) -> None:
-        """Reset the camera to default XY view."""
-        self.vtk_plotter.view_xy(render=False)
-        self.plotter.camera.focal_point = [0, 0, 0]
+        """Reset the camera to isometric view fitted to scene bounds."""
+        if not self.plotter:
+            return
+        self.plotter.reset_camera()
+        self.plotter.view_isometric()
+        self.plotter.render()
+        self.plotter.camera.zoom(3)
         self.visualizer.status = "View reset."
-
-    def spin_camera(self) -> None:
-        """
-        Animate the camera spinning around the scene.
-        Copied from ``MainWindow.spin_camera`` in *repo_vis*.
-        """
-        spins, fps, dpf = 2, 30, 2
-        n_pts = int(360 / dpf)
-        center = np.array([0.0, 0.0, 0.0])
-        up = np.array([0.0, 1.0, 0.0])
-
-        current = np.array(self.plotter.camera_position[0])
-        radius = np.linalg.norm(current - center)
-        theta = np.linspace(0, 2 * np.pi, n_pts)
-        path = np.c_[radius * np.cos(theta), np.zeros(n_pts), radius * np.sin(theta)]
-
-        self.current_frame, self.spin_count = 0, 0
-        self.visualizer.status = "Spinning camera..."
-
-        def update_camera():
-            if self.current_frame < len(path):
-                self.plotter.camera_position = [path[self.current_frame], center, up]
-                if self.current_frame < len(path) - 1:
-                    self.current_frame += 1
-                self.plotter.render()
-            else:
-                self.current_frame = 0
-                self.spin_count += 1
-                if self.spin_count >= spins:
-                    stop_timer()
-
-        def stop_timer():
-            self.timer.stop()
-            self.update_status_display("Spin complete.")
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(update_camera)
-        self.timer.start(int(1000 / fps / 2))
-        QTimer.singleShot(int(spins / 1 * 1000 * 2), stop_timer)
 
     # ── Save ────────────────────────────────────────────────────────────────
 
@@ -1100,6 +1140,8 @@ class MainWindow(QMainWindow):
             else:
                 self.plotter.screenshot(str(save_path))
             self.visualizer.status = f"Saved → {save_path}"
+        except ImportError as exc:
+            self.visualizer.status = f"HTML export unavailable: {exc}"
         except (OSError, RuntimeError, ValueError) as exc:
             self.visualizer.status = f"Error saving: {exc}"
 
@@ -1114,12 +1156,12 @@ class MainWindow(QMainWindow):
         """Render status text with colour coding (mirrors repo_vis)."""
         if status.startswith("Error"):
             html = f"<span style='color:#E53935;font-size:13px;'><b>Error:</b> {status[6:]}</span>"
-        elif "Rendering" in status or "Loading" in status or "Saving" in status or "Spinning" in status:
+        elif "Rendering" in status or "Loading" in status or "Saving" in status:
             html = f"<span style='color:#42A5F5;font-size:13px;'><b>⏳ {status}</b></span>"
         elif "Loaded" in status or "Saved" in status or "complete" in status.lower():
             html = f"<span style='color:#66BB6A;font-size:13px;'><b>✓ {status}</b></span>"
-        elif "Ready" in status or "reset" in status.lower() or "Spin complete" in status:
-            html = f"<span style='color:#66BB6A;font-size:13px;'><b>⚡ Ready</b></span>"
+        elif "Ready" in status or "reset" in status.lower():
+            html = "<span style='color:#66BB6A;font-size:13px;'><b>⚡ Ready</b></span>"
         else:
             html = f"<span style='font-size:13px;'>{status}</span>"
         self.status_display.setText(html)
@@ -1151,9 +1193,12 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "plotter") and self.plotter:
             try:
-                if hasattr(self.plotter, "clear_actors"): self.plotter.clear_actors()
-                if hasattr(self.plotter, "clear"):        self.plotter.clear()
-                if hasattr(self.plotter, "close"):        self.plotter.close()
+                if hasattr(self.plotter, "clear_actors"):
+                    self.plotter.clear_actors()
+                if hasattr(self.plotter, "clear"):
+                    self.plotter.clear()
+                if hasattr(self.plotter, "close"):
+                    self.plotter.close()
                 self.visualizer.plotter = None
                 self.plotter = None
                 self.vtk_plotter = None

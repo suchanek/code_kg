@@ -11,12 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`.github/actions/codekg-action/`** — GitHub composite action for automated CodeKG analysis. Builds SQLite + LanceDB indexes, runs architectural analysis, caches the `.codekg/` directory, uploads artifacts, optionally posts PR comments, and can fail the workflow when issues are detected. Configurable via `python-version`, `repo-path`, `report-path`, `json-path`, `model`, `post-comment`, and `fail-on-issues` inputs.
 - **`_get_report_metadata()` method** (`codekg_thorough_analysis.py`) — Generates a Markdown metadata block with generation timestamp (UTC), CodeKG package version, Git commit SHA (7-char short form), and branch. Falls back gracefully to "unknown" when Git is unavailable or running outside a Git repository. Detects CI environment variables (`GITHUB_SHA`, `GITHUB_REF`) for accurate metadata in GitHub Actions workflows.
+- **`trame-vtk` dependency** (`pyproject.toml`) — Added optional visualization dependency for enhanced 3D rendering capabilities.
 
 ### Changed
 
 - **DateTime handling** (`codekg_thorough_analysis.py`) — All datetime calls upgraded to use `datetime.datetime.now(datetime.timezone.utc)` for consistent UTC timestamps across local, CI, and cloud environments. Affects `_write_report()`, `main()`, `_default_report_name()`, and JSON snapshot generation.
 - **Report generation** (`codekg_thorough_analysis.py`) — Markdown report now includes metadata block at the top (timestamp, version, commit ref) prepended to the analysis sections.
 - **CLI error handling** (`codekg_thorough_analysis.py`) — `cli()` function wrapped in try-except, logging exceptions and exiting with status code 1 on failure. Explicit `sys.exit(0)` added on success.
+- **3D visualization enhancements** (`viz3d.py`, `layout3d.py`) — Node sizes doubled for improved visibility (module: 0.6→1.2, class: 0.45→0.9, function: 0.35→0.7, method: 0.25→0.5, symbol: 0.2→0.4). Ground plane and cake stand geometry added to create_kg_visualization(). CONTAINS edge color darkened (#BDC3C7→#555555). Removed unused QTimer import and "Spin" button reference. Code formatting updated to ruff standards.
+- **PyVista dependency** (`pyproject.toml`) — Added `jupyter` extras to enable enhanced PyVista features.
+- **LayerCakeLayout default parameter** (`layout3d.py`) — Disc radius increased from 18.0 to 28.0 for better node spacing.
 
 ### Removed
 
