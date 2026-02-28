@@ -9,12 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docs/Architecture-brief.md`** — Comprehensive condensed architecture document (219 lines) covering design principles, layered architecture (primitives, CodeGraph, GraphStore, SemanticIndex, CodeKG), build pipeline, hybrid query model, ranking, deduplication, interfaces (Streamlit, MCP, CLI), data flow, and dependencies. Companion to the longer Architecture.md.
+- **`docs/Architecture-plain.md`** — Plain-text version of the architecture (75 lines) formatted for accessibility without markdown. Covers design principles, layered architecture, orchestrator, result types, build pipeline phases, hybrid query model, ranking/deduplication, interfaces, source layout, data flow, and dependencies.
+- **`docs/code_kg_arch_9x16.png`** and **`docs/code_kg_arch_banana.png`** — Architecture workflow diagrams generated via PaperBanana from CodeKG's own analysis output (`codekg-analyze`), demonstrating the system's ability to ingest its own structured output for visualization.
 - **`.github/actions/codekg-action/`** — GitHub composite action for automated CodeKG analysis. Builds SQLite + LanceDB indexes, runs architectural analysis, caches the `.codekg/` directory, uploads artifacts, optionally posts PR comments, and can fail the workflow when issues are detected. Configurable via `python-version`, `repo-path`, `report-path`, `json-path`, `model`, `post-comment`, and `fail-on-issues` inputs.
 - **`_get_report_metadata()` method** (`codekg_thorough_analysis.py`) — Generates a Markdown metadata block with generation timestamp (UTC), CodeKG package version, Git commit SHA (7-char short form), and branch. Falls back gracefully to "unknown" when Git is unavailable or running outside a Git repository. Detects CI environment variables (`GITHUB_SHA`, `GITHUB_REF`) for accurate metadata in GitHub Actions workflows.
 - **`trame-vtk` dependency** (`pyproject.toml`) — Added optional visualization dependency for enhanced 3D rendering capabilities.
 
 ### Changed
 
+- **`README.md`** — Added architecture diagram image and references section. New "End-to-End Workflow" section embeds `code_kg_arch_9x16.png` with explanation from PaperBanana. New "References" section documents tools (PaperBanana) and related work (Microsoft GraphRAG, Amplify, LanceDB, Streamlit) with comparisons.
+- **`LICENSE` field** (`pyproject.toml`) — Changed from `LicenseRef-PolyForm-Noncommercial-1.0.0` to `Elastic-2.0`, aligning with the project's Elastic License 2.0 adoption.
+- **`.gitignore`** — Consolidated `.DS_Store` entries (removed redundant `.DS_Store/**` entry) and removed outdated CodeKG artifact placeholder comments.
 - **DateTime handling** (`codekg_thorough_analysis.py`) — All datetime calls upgraded to use `datetime.datetime.now(datetime.timezone.utc)` for consistent UTC timestamps across local, CI, and cloud environments. Affects `_write_report()`, `main()`, `_default_report_name()`, and JSON snapshot generation.
 - **Report generation** (`codekg_thorough_analysis.py`) — Markdown report now includes metadata block at the top (timestamp, version, commit ref) prepended to the analysis sections.
 - **CLI error handling** (`codekg_thorough_analysis.py`) — `cli()` function wrapped in try-except, logging exceptions and exiting with status code 1 on failure. Explicit `sys.exit(0)` added on success.
