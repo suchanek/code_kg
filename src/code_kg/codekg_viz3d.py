@@ -60,10 +60,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--width",  type=int, default=1400, help="Window width in pixels",
+        "--width",
+        type=int,
+        default=1400,
+        help="Window width in pixels",
     )
     parser.add_argument(
-        "--height", type=int, default=900,  help="Window height in pixels",
+        "--height",
+        type=int,
+        default=900,
+        help="Window height in pixels",
     )
 
     args = parser.parse_args()
@@ -71,8 +77,7 @@ def main() -> None:
     db = Path(args.db)
     if not db.exists():
         parser.error(
-            f"Database not found: {db}\n"
-            "Run 'codekg-build-sqlite' first to index your repository."
+            f"Database not found: {db}\nRun 'codekg-build-sqlite' first to index your repository."
         )
 
     from code_kg.viz3d import launch
